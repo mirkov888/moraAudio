@@ -491,7 +491,7 @@ public class MainActivity extends Activity {
             Root.Result r = key.startsWith("BB_")
                 ? Root.module("bass_ctl.sh", "set " + key + " " + value)
                 : Root.module("mora_cfg.sh", "set " + key + " " + value);
-            final boolean ok = r.ok() && r.out.contains("success");
+            final boolean ok = r.ok() && r.out.toLowerCase(java.util.Locale.ROOT).contains("success");
             ui.post(() -> toast(ok ? "Tersimpan" : "Gagal menyimpan " + key));
         });
     }
@@ -501,7 +501,7 @@ public class MainActivity extends Activity {
         toast("Menerapkan mode " + MODE_TITLES[idx] + "...");
         io.execute(() -> {
             Root.Result r = Root.module("set_audio_mode.sh", MODES[idx]);
-            final boolean ok = r.ok() && r.out.contains("success");
+            final boolean ok = r.ok() && r.out.toLowerCase(java.util.Locale.ROOT).contains("success");
             ui.post(() -> {
                 toast(ok ? "Mode " + MODE_TITLES[idx] + " aktif" : "Gagal mengganti mode");
                 refresh();
@@ -533,8 +533,12 @@ public class MainActivity extends Activity {
     private void restartAudio() {
         toast("Restart audio...");
         io.execute(() -> {
-            Root.run("setprop ctl.restart audioserver");
-            ui.post(() -> { toast("Audio dimulai ulang"); refresh(); });
+            Root.Result r = Root.run("setprop ctl.restart audioserver");
+            final boolean ok = r.ok();
+            ui.post(() -> {
+                toast(ok ? "Perintah restart audio dikirim" : "Gagal restart audio: akses root ditolak");
+                refresh();
+            });
         });
     }
 
@@ -552,8 +556,8 @@ public class MainActivity extends Activity {
         toast("Menerapkan...");
         io.execute(() -> {
             Root.Result a = Root.module("mora_cfg.sh", "apply");
-            Root.module("bass_ctl.sh", "apply");
-            final boolean ok = a.ok();
+            Root.Result b = Root.module("bass_ctl.sh", "apply");
+            final boolean ok = a.ok() && b.ok();
             ui.post(() -> {
                 toast(ok ? "Diterapkan" : "Gagal menerapkan");
                 refresh();

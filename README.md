@@ -1,29 +1,60 @@
-# Mora Audio (app)
+# Mora Audio
 
-Small root app that controls the **Mora Audio Suite** module (v3.3+): listening mode, BassBoost (bass, dynamics, loudness) and the main tuning toggles. It runs the same module scripts as the module's WebUI, so both always show the same state.
+Mora Audio is a standalone Android control app for the **Mora Audio Suite** root module.
+It is not a music player yet: the current source controls the module's listening presets,
+ViPER driver status, BassBoost, selected audio tuning switches, and diagnostic actions.
 
-- Needs the Mora Audio Suite module installed and root granted to the app (KernelSU / Magisk / APatch).
-- No dependencies, no network permission, no data collection.
+## Requirements
 
-## Build (Android Studio)
-Open this folder, let Gradle sync (AGP 8.5.2, compileSdk 34), then Run, or `gradle assembleDebug`.
+- Android 8.0 (API 26) or newer.
+- Mora Audio Suite module installed at one of the supported module paths.
+- Root access granted explicitly to Mora Audio through KernelSU, Magisk, or APatch.
+- The module scripts and JSON status fields expected by this app must match the installed module version.
 
-## Build without a PC (GitHub Actions)
-1. Create a repository on GitHub and upload this whole folder (including `.github/workflows/build.yml`).
-2. Open the Actions tab, wait for "Build APK" to finish, download `MoraAudio-debug-apk`, install `app-debug.apk`.
+Without the module, the app can open but module-dependent controls will report that the module is unavailable.
+The app does not request network access and does not currently connect to Mora Shield.
 
-Status: the source was type-checked against API stubs only. It has not been compiled with the Android SDK or run on a device. If the build reports an error, send the log and it will be fixed.
+## Build
 
-Made by Mora & Claude Code.
+The project uses Android Gradle Plugin 8.5.2, Gradle 8.7, Java 17, and compileSdk 34.
 
+### GitHub Actions
 
-## Build di GitHub (v2.0)
-1. Buat repo baru di GitHub, unggah seluruh isi folder ini (termasuk `.github/workflows/build.yml`).
-2. Buka tab **Actions** → workflow **Build APK** berjalan otomatis (atau tekan *Run workflow*).
-3. Setelah hijau, unduh **MoraAudio-apk** dari bagian *Artifacts*.
-4. Opsional: beri tag `v2.0` (`git tag v2.0 && git push --tags`) agar APK juga muncul di *Releases*.
+1. Push this project to a GitHub repository.
+2. Open **Actions** and run **Build APK** (or push a commit).
+3. Download the `MoraAudio-apk` artifact.
 
-Catatan jujur: kode belum pernah dikompilasi dengan Android SDK di lingkungan pembuatnya. Jika build gagal, salin log error dari Actions dan kirim agar diperbaiki.
+The workflow explicitly installs `platform-tools`, `platforms;android-34`, and
+`build-tools;34.0.0`. It deliberately does **not** request the obsolete SDK package
+named `tools`, which causes `Failed to find package 'tools'` on current SDK repositories.
 
-## Baru di v2.0
-Navigasi bawah (Beranda/Suara/Tuning/Sistem), kartu status driver dengan penyebab dan tombol **Perbaiki driver**, kartu mode, ikon aplikasi, tampilan log.
+### Local build
+
+```bash
+gradle assembleDebug
+```
+
+## Root command safety
+
+The root bridge uses `su -c`, restricts module script names and argument characters,
+and is only intended for fixed app-owned commands. Do not add an exported activity,
+service, receiver, or IPC endpoint that accepts arbitrary shell commands.
+
+## Mora ecosystem compatibility
+
+Mora Audio remains independent during this development phase. No Mora Shield connector,
+network endpoint, account, or background telemetry is included.
+
+A future integration can be added as an optional connector module after the Mora connector
+protocol and permissions are stable. The audio controls must continue to work when
+Mora Shield is absent, disconnected, or uninstalled. Connector access should be opt-in,
+capability-scoped, authenticated, and must never expose arbitrary root shell execution.
+
+## Current limitations
+
+- This APK controls the installed root module; it does not implement audio decoding or
+  local music playback.
+- The source archive does not include the `mora_audio_suite` module scripts, so their
+  compatibility cannot be verified from this project alone.
+- A successful GitHub Actions build is still required to confirm compilation against
+  the Android SDK, followed by testing on the target device.
