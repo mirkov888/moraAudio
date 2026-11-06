@@ -1,0 +1,4 @@
+// Mora Audio Suite - made by Mora & Claude Code
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}

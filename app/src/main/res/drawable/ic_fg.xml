@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mora Audio Suite - made by Mora & Claude Code -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#3DD6C6" android:pathData="M30,52h8v24h-8z"/>
+    <path android:fillColor="#3DD6C6" android:pathData="M42,38h8v38h-8z"/>
+    <path android:fillColor="#7C9CFF" android:pathData="M54,30h8v46h-8z"/>
+    <path android:fillColor="#3DD6C6" android:pathData="M66,44h8v32h-8z"/>
+</vector>
