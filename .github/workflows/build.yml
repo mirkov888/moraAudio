@@ -38,7 +38,7 @@ jobs:
             exit 1
           fi
           set +o pipefail
-          yes | "$SDKMANAGER" --licenses >/dev/null
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
           status=$?
           set -o pipefail
           if [ "$status" -ne 0 ] && [ "$status" -ne 141 ]; then exit "$status"; fi
@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
-          "$SDKMANAGER" --install \
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install \
             "platform-tools" \
             "platforms;android-34" \
             "build-tools;34.0.0"
