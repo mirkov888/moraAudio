@@ -12,6 +12,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -124,6 +125,15 @@ public class MainActivity extends Activity {
 
     private LinearLayout buildHome() {
         LinearLayout c = column();
+        ImageView banner = new ImageView(this);
+        banner.setImageResource(R.drawable.mora_banner);
+        banner.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        banner.setContentDescription("Mora Audio banner");
+        banner.setBackgroundColor(CARD);
+        banner.setClipToOutline(true);
+        LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(176));
+        bannerLp.setMargins(0, 0, 0, dp(16));
+        c.addView(banner, bannerLp);
         c.addView(label("Mora Audio", 28, TEXT, true));
         c.addView(label("Dengar lebih jernih, tonton lebih hidup", 13, MUTED, false));
 
