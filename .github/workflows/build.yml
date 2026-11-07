@@ -1,59 +1,115 @@
-# Mora Audio standalone APK build.
-# Do not request the obsolete SDK package named "tools".
+# Mora Audio Android CI
 name: Build APK
-
 on:
   push:
     branches: ['**']
     tags: ['v*']
   pull_request:
   workflow_dispatch:
-
 permissions:
   contents: write
-
+concurrency:
+  group: mora-audio-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
+    name: Build MoraAudio APK
     runs-on: ubuntu-latest
-
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
-
-      - name: Setup Java
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platform-tools
-            platforms;android-34
-            build-tools;34.0.0
-
-      - name: Setup Gradle
+      # Avoid setup-android@v3: its multiline packages input was passed as one argument.
+      - name: Accept Android SDK licenses
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::Android sdkmanager was not found"
+            exit 1
+          fi
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          status=$?
+          set -o pipefail
+          if [ "$status" -ne 0 ] && [ "$status" -ne 141 ]; then exit "$status"; fi
+      - name: Install required Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          "$SDKMANAGER" --install \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
-
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk MoraAudio.apk
-
+      - name: Validate project files
+        run: |
+          set -euo pipefail
+          test -f settings.gradle
+          test -f build.gradle
+          test -f app/build.gradle
+          test -f app/src/main/AndroidManifest.xml
+          echo "Project structure OK" | tee build-diagnostics.txt
+      - name: Build debug APK with full diagnostics
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace --info clean assembleDebug 2>&1 | tee build.log
+      - name: Verify and stage APK
+        if: success()
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          mkdir -p artifacts
+          cp "$APK" artifacts/MoraAudio-debug.apk
+          sha256sum artifacts/MoraAudio-debug.apk | tee -a build-diagnostics.txt
+      - name: Write failure summary
+        if: failure()
+        run: |
+          {
+            echo "## MoraAudio build failed"
+            echo
+            echo "Full Gradle output is attached as the mora-audio-build-diagnostics artifact."
+            echo
+            if [ -f build.log ]; then
+              echo "### Last 100 log lines"
+              tail -n 100 build.log
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: MoraAudio-apk
-          path: MoraAudio.apk
+          name: MoraAudio-debug-apk
+          path: artifacts/MoraAudio-debug.apk
           if-no-files-found: error
-
-      - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+          retention-days: 30
+      - name: Upload build logs and diagnostics (including failures)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mora-audio-build-diagnostics
+          path: |
+            build.log
+            build-diagnostics.txt
+            app/build/outputs/logs/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Publish GitHub Release
+        if: success() && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: MoraAudio.apk
+          files: artifacts/MoraAudio-debug.apk
