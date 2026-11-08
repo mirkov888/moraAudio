@@ -112,6 +112,13 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        super.onPause();
+        livePolling = false;
+        liveHandler.removeCallbacks(livePoll);
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
         livePolling = false;
