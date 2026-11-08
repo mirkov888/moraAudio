@@ -75,7 +75,8 @@ public class MainActivity extends Activity {
     private final List<View> bound = new ArrayList<>();
 
     private TextView heroTitle, heroSub, heroChip, statModule, statAndroid, statRys, statBass, statDriver, statMode, statAudioServer, statOutput;
-    private TextView fixBtn, logView, nowTitle, nowArtist, nowState, nowOutput, mediaPermissionBtn;
+    private TextView fixBtn, logView, nowTitle, nowArtist, nowState, nowOutput, nowQuality, mediaPermissionBtn;
+    private long lastQualityRead;
     private final Handler liveHandler = new Handler(Looper.getMainLooper());
     private boolean livePolling;
     private final Runnable livePoll = new Runnable() { public void run() { if (livePolling) { refreshNowPlaying(); liveHandler.postDelayed(this, 1000); } } };
@@ -222,11 +223,14 @@ public class MainActivity extends Activity {
         nowArtist = label("Putar musik atau video di aplikasi mana pun", 13, MUTED, false);
         nowState = label("Status: menunggu", 12, ACCENT, true);
         nowOutput = label("Output: -", 12, MUTED, false);
+        nowQuality = label("Kualitas output: membaca data...", 12, MUTED, false);
         playing.addView(nowTitle);
         nowArtist.setPadding(0, dp(5), 0, dp(8));
         playing.addView(nowArtist);
         playing.addView(nowState);
         playing.addView(nowOutput);
+        nowQuality.setPadding(0, dp(5), 0, 0);
+        playing.addView(nowQuality);
         mediaPermissionBtn = button("Aktifkan akses media", true);
         LinearLayout.LayoutParams permLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
         permLp.setMargins(0, dp(10), 0, 0);
@@ -546,6 +550,11 @@ public class MainActivity extends Activity {
             out.append("  •  Player aktif: ").append(active.size());
             nowOutput.setText(out.toString());
             mediaPermissionBtn.setVisibility(isMediaListenerEnabled() ? View.GONE : View.VISIBLE);
+            long now = System.currentTimeMillis();
+            if (now - lastQualityRead > 3000) {
+                lastQualityRead = now;
+                readAudioQuality(devices);
+            }
         } catch (SecurityException e) {
             nowTitle.setText("Izin akses media belum aktif");
             nowArtist.setText("Aktifkan akses notifikasi/media agar aplikasi pemutar terdeteksi");
@@ -553,6 +562,49 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             nowState.setText("Status media tidak tersedia");
         }
+    }
+
+
+    private void readAudioQuality(AudioDeviceInfo[] devices) {
+        io.execute(() -> {
+            String capability = "Dukungan perangkat: belum diketahui";
+            if (devices != null && devices.length > 0) {
+                AudioDeviceInfo d = devices[0];
+                StringBuilder b = new StringBuilder("Dukungan perangkat: ");
+                int[] rates = d.getSampleRates();
+                int[] channels = d.getChannelCounts();
+                int[] encodings = d.getEncodings();
+                if (rates != null && rates.length > 0) {
+                    int max = 0;
+                    for (int rate : rates) if (rate > max) max = rate;
+                    b.append("hingga ").append(max / 1000.0).append(" kHz");
+                } else b.append("sample rate tidak diekspos");
+                if (channels != null && channels.length > 0) {
+                    int maxChannels = 0;
+                    for (int count : channels) if (count > maxChannels) maxChannels = count;
+                    b.append(" • ").append(maxChannels).append(" channel");
+                }
+                if (encodings != null && encodings.length > 0) {
+                    b.append(" • format ");
+                    for (int i = 0; i < encodings.length && i < 4; i++) {
+                        if (i > 0) b.append(", ");
+                        b.append(android.media.AudioFormat.toString(encodings[i]));
+                    }
+                }
+                capability = b.toString();
+            }
+            Root.Result result = Root.run("dumpsys media.audio_flinger 2>/dev/null");
+            String dump = result.out == null ? "" : result.out;
+            String mixer = "Mixer aktif: tidak dapat dibaca";
+            java.util.regex.Matcher rate = java.util.regex.Pattern.compile("(?im)^.*(?:sample rate|sampling rate)\\s*[:=]\\s*(\\d+)\\s*.*$").matcher(dump);
+            if (rate.find()) {
+                int hz = Integer.parseInt(rate.group(1));
+                mixer = "Mixer aktif: " + (hz >= 1000 ? (hz / 1000.0) + " kHz" : hz + " Hz");
+            }
+            final String info = capability + "\\n" + mixer
+                + "\\nCatatan: kemampuan perangkat bukan bukti kualitas file/stream yang sedang diputar.";
+            ui.post(() -> { if (nowQuality != null) nowQuality.setText(info); });
+        });
     }
 
     private boolean isMediaListenerEnabled() {
