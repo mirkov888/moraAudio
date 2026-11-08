@@ -66,7 +66,7 @@ public class MainActivity extends Activity {
     private final LinearLayout[] modeCards = new LinearLayout[3];
     private final List<View> bound = new ArrayList<>();
 
-    private TextView heroTitle, heroSub, heroChip, statModule, statAndroid, statRys, statBass;
+    private TextView heroTitle, heroSub, heroChip, statModule, statAndroid, statRys, statBass, statDriver, statMode, statAudioServer, statOutput;
     private TextView fixBtn, logView;
     private LinearLayout hero;
     private boolean binding;
@@ -184,7 +184,18 @@ public class MainActivity extends Activity {
         statAndroid = stat(stats, "Android");
         statRys = stat(stats, "RySound");
         statBass = stat(stats, "BassBoost");
+        statDriver = stat(stats, "ViPER driver");
+        statMode = stat(stats, "Mode aktif");
+        statAudioServer = stat(stats, "Audio server");
+        statOutput = stat(stats, "Audio output");
         c.addView(stats);
+        c.addView(section("Statistik sistem audio"));
+        c.addView(label("Data dibaca langsung dari Android dan Mora Audio Suite saat halaman diperbarui.", 12, MUTED, false));
+        TextView refreshStats = button("Perbarui statistik", true);
+        LinearLayout.LayoutParams statsLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
+        statsLp.setMargins(0, dp(10), 0, 0);
+        refreshStats.setOnClickListener(v -> refresh());
+        c.addView(refreshStats, statsLp);
         return c;
     }
 
@@ -478,7 +489,25 @@ public class MainActivity extends Activity {
         statModule.setText("v" + j.optString("version"));
         statAndroid.setText(j.optString("android") + "  " + j.optString("device"));
         statRys.setText(j.optString("rys_mode", "-"));
-        statBass.setText(j.optInt("bb_installed") == 1 ? "aktif" : "restart dulu");
+        statBass.setText(j.optInt("bb_installed") == 1 ? "Terpasang" : "Belum terpasang");
+        statDriver.setText(loaded ? "Loaded" : (reg ? "Registered" : "Tidak aktif"));
+        statMode.setText(j.optString("mode", "-"));
+        statAudioServer.setText("Memeriksa...");
+        statOutput.setText("Memeriksa...");
+        io.execute(() -> {
+            Root.Result audio = Root.run("dumpsys media.audio_flinger 2>/dev/null");
+            String dump = audio.out == null ? "" : audio.out;
+            String server = dump.isEmpty() ? "Tidak tersedia" : "Data tersedia";
+            String output = "Tidak terdeteksi";
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?im)^.*(?:sample rate|sampling rate|output device|device:|active tracks?).*$").matcher(dump);
+            if (matcher.find()) output = matcher.group().trim();
+            final String fs = server;
+            final String fo = output;
+            ui.post(() -> {
+                if (statAudioServer != null) statAudioServer.setText(fs);
+                if (statOutput != null) statOutput.setText(fo.length() > 70 ? fo.substring(0, 67) + "..." : fo);
+            });
+        });
 
         String mode = j.optString("mode");
         for (int i = 0; i < 3; i++) styleMode(modeCards[i], MODES[i].equals(mode));
