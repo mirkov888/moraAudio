@@ -565,6 +565,25 @@ public class MainActivity extends Activity {
     }
 
 
+
+    private static String audioEncodingName(int encoding) {
+        switch (encoding) {
+            case android.media.AudioFormat.ENCODING_PCM_16BIT: return "PCM 16-bit";
+            case android.media.AudioFormat.ENCODING_PCM_8BIT: return "PCM 8-bit";
+            case android.media.AudioFormat.ENCODING_PCM_FLOAT: return "PCM float";
+            case android.media.AudioFormat.ENCODING_PCM_24BIT_PACKED: return "PCM 24-bit";
+            case android.media.AudioFormat.ENCODING_PCM_32BIT: return "PCM 32-bit";
+            case android.media.AudioFormat.ENCODING_AC3: return "AC3";
+            case android.media.AudioFormat.ENCODING_E_AC3: return "E-AC3";
+            case android.media.AudioFormat.ENCODING_DTS: return "DTS";
+            case android.media.AudioFormat.ENCODING_DTS_HD: return "DTS-HD";
+            case android.media.AudioFormat.ENCODING_AAC_LC: return "AAC";
+            case android.media.AudioFormat.ENCODING_AAC_HE_V1: return "AAC-HE";
+            case android.media.AudioFormat.ENCODING_AAC_HE_V2: return "AAC-HEv2";
+            default: return "Encoding " + encoding;
+        }
+    }
+
     private void readAudioQuality(AudioDeviceInfo[] devices) {
         io.execute(() -> {
             String capability = "Dukungan perangkat: belum diketahui";
@@ -588,7 +607,7 @@ public class MainActivity extends Activity {
                     b.append(" • format ");
                     for (int i = 0; i < encodings.length && i < 4; i++) {
                         if (i > 0) b.append(", ");
-                        b.append(android.media.AudioFormat.toString(encodings[i]));
+                        b.append(audioEncodingName(encodings[i]));
                     }
                 }
                 capability = b.toString();
