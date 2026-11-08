@@ -2,6 +2,14 @@
 package app.mora.audio;
 
 import android.app.Activity;
+import android.media.AudioManager;
+import android.media.AudioDeviceInfo;
+import android.media.AudioPlaybackConfiguration;
+import android.media.session.MediaController;
+import android.media.session.MediaSessionManager;
+import android.content.ComponentName;
+import android.content.Intent;
+import android.provider.Settings;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -67,7 +75,10 @@ public class MainActivity extends Activity {
     private final List<View> bound = new ArrayList<>();
 
     private TextView heroTitle, heroSub, heroChip, statModule, statAndroid, statRys, statBass, statDriver, statMode, statAudioServer, statOutput;
-    private TextView fixBtn, logView;
+    private TextView fixBtn, logView, nowTitle, nowArtist, nowState, nowOutput, mediaPermissionBtn;
+    private final Handler liveHandler = new Handler(Looper.getMainLooper());
+    private boolean livePolling;
+    private final Runnable livePoll = new Runnable() { public void run() { if (livePolling) { refreshNowPlaying(); liveHandler.postDelayed(this, 1000); } } };
     private LinearLayout hero;
     private boolean binding;
 
@@ -97,12 +108,14 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (heroTitle != null) refresh();
+        if (heroTitle != null) { refresh(); startLivePolling(); }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        livePolling = false;
+        liveHandler.removeCallbacks(livePoll);
         io.shutdownNow();
     }
 
@@ -196,6 +209,23 @@ public class MainActivity extends Activity {
         statsLp.setMargins(0, dp(10), 0, 0);
         refreshStats.setOnClickListener(v -> refresh());
         c.addView(refreshStats, statsLp);
+        c.addView(section("Sedang diputar"));
+        LinearLayout playing = card();
+        nowTitle = label("Belum ada media aktif", 18, TEXT, true);
+        nowArtist = label("Putar musik atau video di aplikasi mana pun", 13, MUTED, false);
+        nowState = label("Status: menunggu", 12, ACCENT, true);
+        nowOutput = label("Output: -", 12, MUTED, false);
+        playing.addView(nowTitle);
+        nowArtist.setPadding(0, dp(5), 0, dp(8));
+        playing.addView(nowArtist);
+        playing.addView(nowState);
+        playing.addView(nowOutput);
+        mediaPermissionBtn = button("Aktifkan akses media", true);
+        LinearLayout.LayoutParams permLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+        permLp.setMargins(0, dp(10), 0, 0);
+        mediaPermissionBtn.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
+        playing.addView(mediaPermissionBtn, permLp);
+        c.addView(playing);
         return c;
     }
 
@@ -449,6 +479,78 @@ public class MainActivity extends Activity {
             final String ferr = err;
             ui.post(() -> showState(fj, ferr));
         });
+    }
+
+
+    private void startLivePolling() {
+        if (livePolling) return;
+        livePolling = true;
+        liveHandler.removeCallbacks(livePoll);
+        liveHandler.post(livePoll);
+    }
+
+    private void refreshNowPlaying() {
+        if (nowTitle == null) return;
+        try {
+            MediaSessionManager manager = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
+            List<MediaController> sessions = manager.getActiveSessions(new ComponentName(this, MoraMediaListener.class));
+            MediaController selected = null;
+            for (MediaController controller : sessions) {
+                android.media.session.PlaybackState state = controller.getPlaybackState();
+                if (state != null && (state.getState() == android.media.session.PlaybackState.STATE_PLAYING ||
+                    state.getState() == android.media.session.PlaybackState.STATE_BUFFERING)) {
+                    selected = controller;
+                    break;
+                }
+                if (selected == null && controller.getMetadata() != null) selected = controller;
+            }
+            if (selected == null) {
+                nowTitle.setText("Tidak ada media aktif");
+                nowArtist.setText("Putar musik/video untuk melihat status di sini");
+                nowState.setText("Status: idle");
+            } else {
+                android.media.MediaMetadata metadata = selected.getMetadata();
+                String title = metadata == null ? "" : metadata.getString(android.media.MediaMetadata.METADATA_KEY_TITLE);
+                String artist = metadata == null ? "" : metadata.getString(android.media.MediaMetadata.METADATA_KEY_ARTIST);
+                String album = metadata == null ? "" : metadata.getString(android.media.MediaMetadata.METADATA_KEY_ALBUM);
+                if (title == null || title.trim().isEmpty()) title = selected.getPackageName();
+                if (artist == null || artist.trim().isEmpty()) artist = album == null ? selected.getPackageName() : album;
+                nowTitle.setText(title);
+                nowArtist.setText(artist);
+                android.media.session.PlaybackState state = selected.getPlaybackState();
+                int st = state == null ? android.media.session.PlaybackState.STATE_NONE : state.getState();
+                String label = st == android.media.session.PlaybackState.STATE_PLAYING ? "SEDANG DIPUTAR" :
+                    st == android.media.session.PlaybackState.STATE_PAUSED ? "PAUSED" :
+                    st == android.media.session.PlaybackState.STATE_BUFFERING ? "BUFFERING" : "MEDIA AKTIF";
+                nowState.setText("Status: " + label + "  •  " + selected.getPackageName());
+            }
+            AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+            List<AudioPlaybackConfiguration> active = audio.getActivePlaybackConfigurations();
+            AudioDeviceInfo[] devices = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+            StringBuilder out = new StringBuilder("Output: ");
+            int count = 0;
+            for (AudioDeviceInfo device : devices) {
+                if (count > 0) out.append(", ");
+                out.append(device.getProductName());
+                count++;
+                if (count == 2) break;
+            }
+            if (count == 0) out.append("tidak terdeteksi");
+            out.append("  •  Player aktif: ").append(active.size());
+            nowOutput.setText(out.toString());
+            mediaPermissionBtn.setVisibility(isMediaListenerEnabled() ? View.GONE : View.VISIBLE);
+        } catch (SecurityException e) {
+            nowTitle.setText("Izin akses media belum aktif");
+            nowArtist.setText("Aktifkan akses notifikasi/media agar aplikasi pemutar terdeteksi");
+            mediaPermissionBtn.setVisibility(View.VISIBLE);
+        } catch (Exception e) {
+            nowState.setText("Status media tidak tersedia");
+        }
+    }
+
+    private boolean isMediaListenerEnabled() {
+        String enabled = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
+        return enabled != null && enabled.contains(getPackageName() + "/" + MoraMediaListener.class.getName());
     }
 
     private static String reasonText(String reason) {
