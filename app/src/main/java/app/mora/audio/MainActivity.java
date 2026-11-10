@@ -295,6 +295,12 @@ public class MainActivity extends Activity {
         c.addView(action("Perbaiki driver ViPER", "Relabel, daftarkan ulang, restart audio", v -> fixDriver()));
         c.addView(action("Restart audio", "Mulai ulang audioserver", v -> restartAudio()));
         c.addView(action("Muat ulang status", "Baca ulang dari module", v -> refresh()));
+        c.addView(section("Diagnostik modul v3.4+"));
+        c.addView(action("Periksa pemasangan", "Root, mount, HAL, ViPER, konflik dan SELinux", v -> showModuleCheck()));
+        c.addView(action("Laporan lengkap", "Baca laporan diagnostik tanpa mengubah pengaturan", v -> showModuleReport()));
+        c.addView(action("Pantau suhu dan baterai", "Baca monitor bawaan modul", v -> showModuleMonitor()));
+        c.addView(section("Cadangan pengaturan"));
+        c.addView(action("Ekspor cadangan", "Simpan konfigurasi ke Download/mora_backup.tar.gz", v -> exportModuleBackup()));
         c.addView(section("Log"));
         logView = label("Ketuk Lihat log untuk membaca log module.", 12, MUTED, false);
         logView.setTypeface(Typeface.MONOSPACE);
@@ -782,6 +788,42 @@ public class MainActivity extends Activity {
                 refresh();
             });
         });
+    }
+
+    // Optional v3.4+ commands. Older installed modules remain supported: missing scripts show a hint.
+    private void showOptionalModuleOutput(String script, String args, String title) {
+        if (logView != null) logView.setText("Memeriksa " + title + "...");
+        showTab(3);
+        io.execute(() -> {
+            Root.Result result = Root.module(script, args);
+            final String out = result.ok() ? result.out
+                : "Fitur " + title + " belum tersedia atau gagal. Pastikan modul terbaru terpasang.\\n" + result.out;
+            ui.post(() -> {
+                if (logView != null) logView.setText(out.isEmpty() ? "Tidak ada data." : out);
+            });
+        });
+    }
+
+    private void showModuleCheck() {
+        showOptionalModuleOutput("setup_check.sh", "", "cek pemasangan");
+    }
+
+    private void showModuleReport() {
+        showOptionalModuleOutput("report.sh", "", "laporan modul");
+    }
+
+    private void showModuleMonitor() {
+        showOptionalModuleOutput("monitor.sh", "", "monitor suhu dan baterai");
+    }
+
+    private void exportModuleBackup() {
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("Ekspor cadangan?")
+            .setMessage("Konfigurasi modul akan disimpan ke /sdcard/Download/mora_backup.tar.gz. File lama dengan nama sama dapat tertimpa.")
+            .setNegativeButton("Batal", null)
+            .setPositiveButton("Ekspor", (dialog, which) ->
+                showOptionalModuleOutput("backup_ctl.sh", "export", "ekspor cadangan"))
+            .show();
     }
 
     private void toast(String s) {
