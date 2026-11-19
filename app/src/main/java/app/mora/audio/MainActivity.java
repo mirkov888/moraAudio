@@ -592,26 +592,42 @@ public class MainActivity extends Activity {
 
     private void readAudioQuality(AudioDeviceInfo[] devices) {
         io.execute(() -> {
-            String capability = "Dukungan perangkat: belum diketahui";
-            if (devices != null && devices.length > 0) {
-                AudioDeviceInfo d = devices[0];
-                StringBuilder b = new StringBuilder("Dukungan perangkat: ");
-                int[] rates = d.getSampleRates();
-                int[] channels = d.getChannelCounts();
-                int[] encodings = d.getEncodings();
+            AudioDeviceInfo usb = null;
+            if (devices != null) {
+                for (AudioDeviceInfo device : devices) {
+                    int type = device.getType();
+                    if (type == AudioDeviceInfo.TYPE_USB_DEVICE || type == AudioDeviceInfo.TYPE_USB_HEADSET) {
+                        usb = device;
+                        break;
+                    }
+                }
+            }
+            String capability;
+            if (usb == null) {
+                capability = "USB DAC: tidak terdeteksi. Data speaker/Bluetooth tidak dipakai sebagai kemampuan DAC USB.";
+            } else {
+                StringBuilder b = new StringBuilder("USB DAC: ").append(usb.getProductName()).append("\\nDukungan: ");
+                int[] rates = usb.getSampleRates();
+                int[] channels = usb.getChannelCounts();
+                int[] encodings = usb.getEncodings();
                 if (rates != null && rates.length > 0) {
-                    int max = 0;
-                    for (int rate : rates) if (rate > max) max = rate;
-                    b.append("hingga ").append(max / 1000.0).append(" kHz");
-                } else b.append("sample rate tidak diekspos");
+                    java.util.Arrays.sort(rates);
+                    b.append("sample rate ");
+                    for (int i = 0; i < rates.length; i++) {
+                        if (i > 0) b.append(", ");
+                        b.append(rates[i] / 1000.0).append(" kHz");
+                    }
+                } else b.append("sample rate tidak diekspos Android");
                 if (channels != null && channels.length > 0) {
-                    int maxChannels = 0;
-                    for (int count : channels) if (count > maxChannels) maxChannels = count;
-                    b.append(" • ").append(maxChannels).append(" channel");
+                    b.append(" • channel ");
+                    for (int i = 0; i < channels.length; i++) {
+                        if (i > 0) b.append("/");
+                        b.append(channels[i]);
+                    }
                 }
                 if (encodings != null && encodings.length > 0) {
                     b.append(" • format ");
-                    for (int i = 0; i < encodings.length && i < 4; i++) {
+                    for (int i = 0; i < encodings.length; i++) {
                         if (i > 0) b.append(", ");
                         b.append(audioEncodingName(encodings[i]));
                     }
@@ -627,7 +643,7 @@ public class MainActivity extends Activity {
                 mixer = "Mixer aktif: " + (hz >= 1000 ? (hz / 1000.0) + " kHz" : hz + " Hz");
             }
             final String info = capability + "\\n" + mixer
-                + "\\nCatatan: kemampuan perangkat bukan bukti kualitas file/stream yang sedang diputar.";
+                + "\\nCatatan: kemampuan DAC dan sample rate mixer bukan bukti bit-perfect.";
             ui.post(() -> { if (nowQuality != null) nowQuality.setText(info); });
         });
     }
@@ -805,15 +821,49 @@ public class MainActivity extends Activity {
     }
 
     private void showModuleCheck() {
-        showOptionalModuleOutput("setup_check.sh", "", "cek pemasangan");
+        showTab(3);
+        logView.setText("Memeriksa instalasi module...");
+        io.execute(() -> {
+            Root.Result status = Root.module("get_audio_status.sh", "");
+            Root.Result viper = Root.module("viper_status.sh", "");
+            Root.Result root = Root.run("id; echo; getenforce 2>/dev/null; echo; "
+                + "ls -ld /data/adb/modules/mora_audio_suite /data/adb/ksu/modules/mora_audio_suite "
+                + "/data/adb/ap/modules/mora_audio_suite 2>/dev/null");
+            String out = "=== ROOT / MODULE PATH ===\\n" + root.out
+                + "\\n\\n=== AUDIO STATUS ===\\n" + status.out
+                + "\\n\\n=== VIPER STATUS ===\\n" + viper.out;
+            if (!status.ok()) out += "\\nStatus script gagal (exit " + status.code + ").";
+            if (!viper.ok()) out += "\\nViPER status gagal (exit " + viper.code + ").";
+            final String result = out;
+            ui.post(() -> logView.setText(result));
+        });
     }
 
     private void showModuleReport() {
-        showOptionalModuleOutput("report.sh", "", "laporan modul");
+        showTab(3);
+        logView.setText("Mengumpulkan laporan audio...");
+        io.execute(() -> {
+            Root.Result status = Root.module("get_audio_status.sh", "");
+            Root.Result viper = Root.module("viper_status.sh", "");
+            Root.Result flinger = Root.run("dumpsys media.audio_flinger 2>/dev/null");
+            String out = "=== MORA AUDIO STATUS ===\\n" + status.out
+                + "\\n\\n=== VIPER DRIVER ===\\n" + viper.out
+                + "\\n\\n=== AUDIO FLINGER (ringkasan) ===\\n" + flinger.out;
+            final String result = out.length() > 60000 ? out.substring(0, 60000) + "\\n[output dipotong]" : out;
+            ui.post(() -> logView.setText(result));
+        });
     }
 
     private void showModuleMonitor() {
-        showOptionalModuleOutput("monitor.sh", "", "monitor suhu dan baterai");
+        showTab(3);
+        logView.setText("Membaca suhu dan baterai...");
+        io.execute(() -> {
+            Root.Result monitor = Root.run("echo '=== BATTERY ==='; dumpsys battery 2>/dev/null; "
+                + "echo; echo '=== THERMAL ==='; dumpsys thermalservice 2>/dev/null; "
+                + "echo; echo '=== AUDIO SERVER ==='; pidof audioserver 2>/dev/null");
+            final String result = monitor.out.isEmpty() ? "Data monitor tidak tersedia." : monitor.out;
+            ui.post(() -> logView.setText(result));
+        });
     }
 
     private void exportModuleBackup() {
