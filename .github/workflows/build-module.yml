@@ -53,6 +53,19 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Export readable module sources for integration review
+        if: steps.source.outputs.available == 'true'
+        run: bash scripts/export-module-review.sh
+
+      - name: Upload module source review
+        if: steps.source.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mora-Audio-Suite-source-review
+          path: artifacts/module-source-review.zip
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Package flashable module
         if: steps.source.outputs.available == 'true'
         run: bash scripts/package-module.sh
