@@ -91,8 +91,9 @@ impl fmt::Display for CapabilityError {
 
 impl std::error::Error for CapabilityError {}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum DeviceState {
+    #[default]
     Detached,
     Attached { device_id: String },
     Ready { device_id: String, capabilities: UsbAudioCapabilities },
@@ -121,12 +122,6 @@ impl std::error::Error for EngineError {}
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PlaybackCoordinator {
     state: DeviceState,
-}
-
-impl Default for DeviceState {
-    fn default() -> Self {
-        Self::Detached
-    }
 }
 
 impl PlaybackCoordinator {
