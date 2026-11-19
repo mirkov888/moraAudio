@@ -1,0 +1,63 @@
+name: Build Mora Audio Suite module
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    paths:
+      - 'vendor/Mora_Audio_Suite_Unified_v3.6.0.zip'
+      - 'scripts/package-module.sh'
+      - '.github/workflows/build-module.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mora-audio-module-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Validate and package root module
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ZIP tools
+        run: sudo apt-get update && sudo apt-get install -y zip unzip
+
+      - name: Check source archive exists
+        id: source
+        shell: bash
+        run: |
+          if [[ -s vendor/Mora_Audio_Suite_Unified_v3.6.0.zip ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Module source archive is not in the repository yet. Add vendor/Mora_Audio_Suite_Unified_v3.6.0.zip to enable packaging."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package flashable module
+        if: steps.source.outputs.available == 'true'
+        run: bash scripts/package-module.sh
+
+      - name: Upload KernelSU flashable ZIP
+        if: steps.source.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mora-Audio-Suite-KernelSU
+          path: artifacts/Mora-Audio-Suite-*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Report pending source archive
+        if: steps.source.outputs.available != 'true'
+        run: |
+          {
+            echo "## Module package not built"
+            echo
+            echo "The source archive is not yet committed."
+            echo "Upload the supplied archive to `vendor/Mora_Audio_Suite_Unified_v3.6.0.zip`, then rerun this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
