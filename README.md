@@ -50,6 +50,10 @@ protocol and permissions are stable. The audio controls must continue to work wh
 Mora Shield is absent, disconnected, or uninstalled. Connector access should be opt-in,
 capability-scoped, authenticated, and must never expose arbitrary root shell execution.
 
+## Rust audio core
+
+The repository now includes a platform-independent Rust workspace at `crates/mora-audio-core`. It models USB PCM capabilities and playback ownership transitions, with unit tests in GitHub Actions. This is a foundation only: Android USB access, system-wide routing, direct USB playback, and bit-perfect verification are not implemented yet.
+
 ## Current limitations
 
 - This APK controls the installed root module; it does not implement audio decoding or
