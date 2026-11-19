@@ -47,7 +47,7 @@ impl UsbAudioCapabilities {
         if self.sample_rates_hz.is_empty() {
             return Err(CapabilityError::NoSampleRates);
         }
-        if self.sample_rates_hz.iter().any(|rate| *rate == 0) {
+        if self.sample_rates_hz.contains(&0) {
             return Err(CapabilityError::InvalidSampleRate);
         }
         if self.formats.is_empty() {
@@ -176,11 +176,10 @@ impl PlaybackCoordinator {
     }
 
     pub fn release_exclusive(&mut self) -> Result<(), EngineError> {
-        let (device_id, request) = match &self.state {
-            DeviceState::ExclusiveOwned { device_id, request } => (device_id.clone(), *request),
+        let device_id = match &self.state {
+            DeviceState::ExclusiveOwned { device_id, .. } => device_id.clone(),
             _ => return Err(EngineError::NoExclusiveSession),
         };
-        let _ = request;
         // The caller must refresh capabilities after a real device/session teardown.
         self.state = DeviceState::Attached { device_id };
         Ok(())
