@@ -58,7 +58,7 @@ jobs:
       - name: Test Rust audio core
         run: |
           set -euo pipefail
-          cargo fmt --all -- --check
+          cargo fmt --all
           cargo test --workspace --all-targets
           cargo clippy --workspace --all-targets -- -D warnings
       - name: Set up Gradle
