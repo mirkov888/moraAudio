@@ -606,7 +606,7 @@ public class MainActivity extends Activity {
             if (usb == null) {
                 capability = "USB DAC: tidak terdeteksi. Data speaker/Bluetooth tidak dipakai sebagai kemampuan DAC USB.";
             } else {
-                StringBuilder b = new StringBuilder("USB DAC: ").append(usb.getProductName()).append("\\nDukungan: ");
+                StringBuilder b = new StringBuilder("USB DAC: ").append(usb.getProductName()).append("\nDukungan: ");
                 int[] rates = usb.getSampleRates();
                 int[] channels = usb.getChannelCounts();
                 int[] encodings = usb.getEncodings();
@@ -642,8 +642,8 @@ public class MainActivity extends Activity {
                 int hz = Integer.parseInt(rate.group(1));
                 mixer = "Mixer aktif: " + (hz >= 1000 ? (hz / 1000.0) + " kHz" : hz + " Hz");
             }
-            final String info = capability + "\\n" + mixer
-                + "\\nCatatan: kemampuan DAC dan sample rate mixer bukan bukti bit-perfect.";
+            final String info = capability + "\n" + mixer
+                + "\nCatatan: kemampuan DAC dan sample rate mixer bukan bukti bit-perfect.";
             ui.post(() -> { if (nowQuality != null) nowQuality.setText(info); });
         });
     }
@@ -813,7 +813,7 @@ public class MainActivity extends Activity {
         io.execute(() -> {
             Root.Result result = Root.module(script, args);
             final String out = result.ok() ? result.out
-                : "Fitur " + title + " belum tersedia atau gagal. Pastikan modul terbaru terpasang.\\n" + result.out;
+                : "Fitur " + title + " belum tersedia atau gagal. Pastikan modul terbaru terpasang.\n" + result.out;
             ui.post(() -> {
                 if (logView != null) logView.setText(out.isEmpty() ? "Tidak ada data." : out);
             });
@@ -829,11 +829,11 @@ public class MainActivity extends Activity {
             Root.Result root = Root.run("id; echo; getenforce 2>/dev/null; echo; "
                 + "ls -ld /data/adb/modules/mora_audio_suite /data/adb/ksu/modules/mora_audio_suite "
                 + "/data/adb/ap/modules/mora_audio_suite 2>/dev/null");
-            String out = "=== ROOT / MODULE PATH ===\\n" + root.out
-                + "\\n\\n=== AUDIO STATUS ===\\n" + status.out
-                + "\\n\\n=== VIPER STATUS ===\\n" + viper.out;
-            if (!status.ok()) out += "\\nStatus script gagal (exit " + status.code + ").";
-            if (!viper.ok()) out += "\\nViPER status gagal (exit " + viper.code + ").";
+            String out = "=== ROOT / MODULE PATH ===\n" + root.out
+                + "\n\n=== AUDIO STATUS ===\n" + status.out
+                + "\n\n=== VIPER STATUS ===\n" + viper.out;
+            if (!status.ok()) out += "\nStatus script gagal (exit " + status.code + ").";
+            if (!viper.ok()) out += "\nViPER status gagal (exit " + viper.code + ").";
             final String result = out;
             ui.post(() -> logView.setText(result));
         });
@@ -846,10 +846,10 @@ public class MainActivity extends Activity {
             Root.Result status = Root.module("get_audio_status.sh", "");
             Root.Result viper = Root.module("viper_status.sh", "");
             Root.Result flinger = Root.run("dumpsys media.audio_flinger 2>/dev/null");
-            String out = "=== MORA AUDIO STATUS ===\\n" + status.out
-                + "\\n\\n=== VIPER DRIVER ===\\n" + viper.out
-                + "\\n\\n=== AUDIO FLINGER (ringkasan) ===\\n" + flinger.out;
-            final String result = out.length() > 60000 ? out.substring(0, 60000) + "\\n[output dipotong]" : out;
+            String out = "=== MORA AUDIO STATUS ===\n" + status.out
+                + "\n\n=== VIPER DRIVER ===\n" + viper.out
+                + "\n\n=== AUDIO FLINGER (ringkasan) ===\n" + flinger.out;
+            final String result = out.length() > 60000 ? out.substring(0, 60000) + "\n[output dipotong]" : out;
             ui.post(() -> logView.setText(result));
         });
     }
