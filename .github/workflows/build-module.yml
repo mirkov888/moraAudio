@@ -7,6 +7,7 @@ on:
     paths:
       - 'vendor/Mora_Audio_Suite_Unified_v3.6.0.zip'
       - 'scripts/package-module.sh'
+      - 'scripts/audit-module.sh'
       - '.github/workflows/build-module.yml'
 
 permissions:
