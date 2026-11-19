@@ -55,12 +55,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Format Rust workspace
+        run: cargo fmt --all
       - name: Test Rust audio core
-        run: |
-          set -euo pipefail
-          cargo fmt --all
-          cargo test --workspace --all-targets
-          cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo test --workspace --all-targets
+      - name: Lint Rust audio core
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
