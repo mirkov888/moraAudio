@@ -146,7 +146,7 @@ final class UsbAudioDescriptorParser {
             out.append("\nCatatan: data ini hasil parsing descriptor mentah, bukan hasil negosiasi clock/format.")
                 .append(" UAC2 clock frequency dibaca terpisah melalui control request jika didukung.");
         }
-        out.append("\\n\\n").append(describeClockTopology(raw));
+        out.append("\n\n").append(describeClockTopology(raw));
         out.append("\nBelum claimInterface, belum SET_INTERFACE, belum transfer PCM,")
             .append(" dan belum membuktikan exclusive playback/bit-perfect.");
         return out.toString();
@@ -248,7 +248,7 @@ final class UsbAudioDescriptorParser {
         if(terminals.isEmpty()) return "UAC2 clock topology: AudioStreaming terminalLink tidak ditemukan.";
         StringBuilder out=new StringBuilder("=== UAC2 CLOCK ENTITY TOPOLOGY ===");
         for(int terminalId:terminals) {
-            out.append("\\nAudioStreaming terminalLink=").append(terminalId).append(": ");
+            out.append("\nAudioStreaming terminalLink=").append(terminalId).append(": ");
             ClockEntity terminal=entities.get(terminalId);
             if(terminal==null || terminal.sources.length==0 || terminal.sources[0]==0) {
                 out.append("terminal/clock reference tidak ditemukan."); continue;
@@ -261,7 +261,7 @@ final class UsbAudioDescriptorParser {
                 out.append(paths.get(i));
             }
         }
-        out.append("\\nSelector multi-input belum dianggap aktif; pin terpilih wajib dibaca dengan GET_CUR.");
+        out.append("\nSelector multi-input belum dianggap aktif; pin terpilih wajib dibaca dengan GET_CUR.");
         return out.toString();
     }
 
