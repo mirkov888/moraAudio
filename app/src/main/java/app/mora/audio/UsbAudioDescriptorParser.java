@@ -146,6 +146,7 @@ final class UsbAudioDescriptorParser {
             out.append("\nCatatan: data ini hasil parsing descriptor mentah, bukan hasil negosiasi clock/format.")
                 .append(" UAC2 clock frequency dibaca terpisah melalui control request jika didukung.");
         }
+        out.append("\\n\\n").append(describeClockTopology(raw));
         out.append("\nBelum claimInterface, belum SET_INTERFACE, belum transfer PCM,")
             .append(" dan belum membuktikan exclusive playback/bit-perfect.");
         return out.toString();
@@ -193,6 +194,102 @@ final class UsbAudioDescriptorParser {
             offset += length;
         }
         return result;
+    }
+
+
+    private static final class ClockEntity {
+        final int id, subtype, interfaceNumber, controlAccess;
+        final int[] sources;
+        ClockEntity(int id, int subtype, int interfaceNumber, int controlAccess, int[] sources) {
+            this.id=id; this.subtype=subtype; this.interfaceNumber=interfaceNumber;
+            this.controlAccess=controlAccess; this.sources=sources;
+        }
+    }
+
+    /** Resolves clock references from AS terminalLink; selector branches remain explicitly ambiguous. */
+    static String describeClockTopology(byte[] raw) {
+        if (raw == null || raw.length == 0) return "UAC2 clock topology: descriptor kosong.";
+        java.util.Map<Integer, ClockEntity> entities = new java.util.LinkedHashMap<>();
+        java.util.List<Integer> terminals = new java.util.ArrayList<>();
+        int offset=0, intf=-1, cls=-1, sub=-1, protocol=-1;
+        while (offset+2 <= raw.length) {
+            int length=u8(raw,offset), type=u8(raw,offset+1);
+            if (length<2 || offset+length>raw.length) break;
+            if (type==DESC_INTERFACE && length>=9) {
+                intf=u8(raw,offset+2); cls=u8(raw,offset+5);
+                sub=u8(raw,offset+6); protocol=u8(raw,offset+7);
+            } else if (type==DESC_CS_INTERFACE && cls==1 && protocol==0x20 && length>=4) {
+                int subtype=u8(raw,offset+2), id=u8(raw,offset+3);
+                if (sub==1) {
+                    if (subtype==0x0A && length>=8) {
+                        entities.put(id,new ClockEntity(id,subtype,intf,u8(raw,offset+5)&3,new int[0]));
+                    } else if (subtype==0x0B && length>=8) {
+                        int pins=u8(raw,offset+4);
+                        if (pins>0 && length>=7+pins) {
+                            int[] sources=new int[pins];
+                            for(int i=0;i<pins;i++) sources[i]=u8(raw,offset+5+i);
+                            entities.put(id,new ClockEntity(id,subtype,intf,
+                                u8(raw,offset+5+pins)&3,sources));
+                        }
+                    } else if (subtype==0x0C && length>=7) {
+                        entities.put(id,new ClockEntity(id,subtype,intf,
+                            u8(raw,offset+5)&3,new int[]{u8(raw,offset+4)}));
+                    } else if (subtype==0x02 && length>=8) {
+                        entities.put(id,new ClockEntity(id,subtype,intf,0,new int[]{u8(raw,offset+7)}));
+                    } else if (subtype==0x03 && length>=9) {
+                        entities.put(id,new ClockEntity(id,subtype,intf,0,new int[]{u8(raw,offset+8)}));
+                    }
+                } else if (sub==2 && subtype==0x01) {
+                    terminals.add(u8(raw,offset+3));
+                }
+            }
+            offset+=length;
+        }
+        if(terminals.isEmpty()) return "UAC2 clock topology: AudioStreaming terminalLink tidak ditemukan.";
+        StringBuilder out=new StringBuilder("=== UAC2 CLOCK ENTITY TOPOLOGY ===");
+        for(int terminalId:terminals) {
+            out.append("\\nAudioStreaming terminalLink=").append(terminalId).append(": ");
+            ClockEntity terminal=entities.get(terminalId);
+            if(terminal==null || terminal.sources.length==0 || terminal.sources[0]==0) {
+                out.append("terminal/clock reference tidak ditemukan."); continue;
+            }
+            java.util.List<String> paths=new java.util.ArrayList<>();
+            resolveClockPath(terminal.sources[0],entities,new java.util.HashSet<Integer>(),paths,"");
+            if(paths.isEmpty()) out.append("jalur clock tidak dapat di-resolve.");
+            else for(int i=0;i<paths.size();i++) {
+                if(i>0) out.append(" | ");
+                out.append(paths.get(i));
+            }
+        }
+        out.append("\\nSelector multi-input belum dianggap aktif; pin terpilih wajib dibaca dengan GET_CUR.");
+        return out.toString();
+    }
+
+    private static void resolveClockPath(int id, java.util.Map<Integer,ClockEntity> entities,
+            java.util.Set<Integer> visited, java.util.List<String> paths, String prefix) {
+        if(visited.contains(id)) { paths.add(prefix+"cycle pada entity "+id); return; }
+        ClockEntity e=entities.get(id);
+        if(e==null) { paths.add(prefix+"entity "+id+" tidak ditemukan"); return; }
+        java.util.Set<Integer> next=new java.util.HashSet<>(visited); next.add(id);
+        if(e.subtype==0x0A) {
+            boolean readable=e.controlAccess==1 || e.controlAccess==3;
+            paths.add(prefix+"Clock Source "+id+(readable
+                ? " [frequency readable, AC interface "+e.interfaceNumber+"]"
+                : " [frequency control tidak readable]"));
+        } else if(e.subtype==0x0B) {
+            if(e.sources.length==1) resolveClockPath(e.sources[0],entities,next,paths,
+                prefix+"Clock Selector "+id+" -> ");
+            else {
+                StringBuilder b=new StringBuilder(prefix+"Clock Selector "+id+
+                    " [AMBIGUOUS, candidates=");
+                for(int i=0;i<e.sources.length;i++) { if(i>0)b.append(','); b.append(e.sources[i]); }
+                paths.add(b.append("; selected pin belum dibaca]").toString());
+            }
+        } else if(e.subtype==0x0C) {
+            resolveClockPath(e.sources[0],entities,next,paths,prefix+"Clock Multiplier "+id+" -> ");
+        } else {
+            resolveClockPath(e.sources[0],entities,next,paths,prefix+"Terminal "+id+" -> ");
+        }
     }
 
     private static int u8(byte[] b, int p) { return b[p] & 0xff; }
