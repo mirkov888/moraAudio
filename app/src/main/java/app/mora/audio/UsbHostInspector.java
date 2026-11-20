@@ -33,11 +33,20 @@ final class UsbHostInspector {
             byte[] raw = connection.getRawDescriptors();
             StringBuilder report = new StringBuilder(UsbAudioDescriptorParser.parse(raw));
             java.util.Map<Integer, Integer> selectedClockPins = new java.util.HashMap<>();
-            java.util.List<UsbAudioDescriptorParser.ClockSelector> selectors =
-                UsbAudioDescriptorParser.findPlaybackClockSelectors(raw);
-            if (!selectors.isEmpty()) {
-                report.append("\n\n=== UAC2 CLOCK SELECTOR (GET_CUR ONLY) ===");
+            java.util.Set<Integer> queriedSelectors = new java.util.HashSet<>();
+            boolean selectorHeaderWritten = false;
+            // Resolve selectors in order so inactive nested branches are never queried.
+            for (int pass = 0; pass < 256; pass++) {
+                java.util.List<UsbAudioDescriptorParser.ClockSelector> selectors =
+                    UsbAudioDescriptorParser.findPlaybackClockSelectors(raw, selectedClockPins);
+                boolean attemptedSelector = false;
                 for (UsbAudioDescriptorParser.ClockSelector selector : selectors) {
+                    if (!queriedSelectors.add(selector.entityId)) continue;
+                    attemptedSelector = true;
+                    if (!selectorHeaderWritten) {
+                        report.append("\n\n=== UAC2 CLOCK SELECTOR (GET_CUR ONLY) ===");
+                        selectorHeaderWritten = true;
+                    }
                     report.append("\nClock Selector ID=").append(selector.entityId)
                         .append(", inputs=").append(selector.inputClockIds.length);
                     if (selector.controlAccess != 1 && selector.controlAccess != 3) {
@@ -46,7 +55,7 @@ final class UsbHostInspector {
                     }
                     byte[] currentPin = new byte[1];
                     int index = (selector.entityId << 8) | (selector.interfaceNumber & 0xff);
-                    int result = connection.controlTransfer(0xA1, 0x81, 0x0100, index,
+                    int result = safeControlTransfer(connection, 0xA1, 0x81, 0x0100, index,
                         currentPin, 1, 1000);
                     if (result != 1) {
                         report.append(" [GET_CUR gagal/tidak didukung: ").append(result).append(']');
@@ -59,9 +68,10 @@ final class UsbHostInspector {
                     }
                     selectedClockPins.put(selector.entityId, pin);
                     report.append(" [pin aktif=").append(pin)
-                        .append(", Clock Source/Entity ID=").append(selector.inputClockIds[pin - 1])
+                        .append(", Clock Entity ID=").append(selector.inputClockIds[pin - 1])
                         .append(']');
                 }
+                if (!attemptedSelector) break;
             }
             java.util.List<UsbAudioDescriptorParser.ClockSource> clocks =
                 UsbAudioDescriptorParser.findPlaybackClockSources(raw, selectedClockPins);
@@ -99,7 +109,7 @@ final class UsbHostInspector {
         final int index = (clock.entityId << 8) | (clock.interfaceNumber & 0xff);
 
         byte[] current = new byte[4];
-        int currentLength = connection.controlTransfer(requestType, getCur, value, index,
+        int currentLength = safeControlTransfer(connection, requestType, getCur, value, index,
             current, current.length, 1000);
         if (currentLength == 4) {
             out.append("\n  Current clock: ").append(readU32(current, 0)).append(" Hz");
@@ -108,7 +118,7 @@ final class UsbHostInspector {
         }
 
         byte[] range = new byte[2 + (maxRanges * 12)];
-        int transferred = connection.controlTransfer(requestType, getRange, value, index,
+        int transferred = safeControlTransfer(connection, requestType, getRange, value, index,
             range, range.length, 1500);
         if (transferred < 2) {
             out.append("\n  GET_RANGE tidak didukung/gagal (result=").append(transferred).append(')');
@@ -130,6 +140,17 @@ final class UsbHostInspector {
         if (declaredRanges > availableRanges) {
             out.append("\n  Range list truncated/unavailable: parsed ")
                 .append(availableRanges).append(" of ").append(declaredRanges);
+        }
+    }
+
+    private static int safeControlTransfer(UsbDeviceConnection connection, int requestType,
+            int request, int value, int index, byte[] buffer, int length, int timeoutMs) {
+        try {
+            return connection.controlTransfer(requestType, request, value, index,
+                buffer, length, timeoutMs);
+        } catch (RuntimeException error) {
+            // One unsupported/malformed device request must not abort the entire scan.
+            return -1;
         }
     }
 
