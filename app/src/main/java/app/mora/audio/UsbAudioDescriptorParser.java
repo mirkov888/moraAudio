@@ -197,6 +197,75 @@ final class UsbAudioDescriptorParser {
     }
 
 
+
+    /**
+     * Returns only readable Clock Sources on an unambiguous path from an AS terminalLink.
+     * Multi-input Clock Selectors are intentionally not traversed until their selected pin
+     * has been queried. This prevents unrelated or inactive clock entities being presented
+     * as the playback clock.
+     */
+    static java.util.List<ClockSource> findPlaybackClockSources(byte[] raw) {
+        java.util.List<ClockSource> readable = findReadableClockSources(raw);
+        java.util.List<ClockSource> result = new java.util.ArrayList<>();
+        if (raw == null || raw.length == 0 || readable.isEmpty()) return result;
+
+        java.util.Map<Integer, Integer> subtypes = new java.util.HashMap<>();
+        java.util.Map<Integer, int[]> edges = new java.util.HashMap<>();
+        java.util.List<Integer> terminalLinks = new java.util.ArrayList<>();
+        int offset=0, cls=-1, sub=-1, protocol=-1;
+        while(offset+2<=raw.length) {
+            int length=u8(raw,offset), type=u8(raw,offset+1);
+            if(length<2 || offset+length>raw.length) break;
+            if(type==DESC_INTERFACE && length>=9) {
+                cls=u8(raw,offset+5); sub=u8(raw,offset+6); protocol=u8(raw,offset+7);
+            } else if(type==DESC_CS_INTERFACE && cls==1 && protocol==0x20 && length>=4) {
+                int subtype=u8(raw,offset+2), id=u8(raw,offset+3);
+                if(sub==1) {
+                    if(subtype==0x02 && length>=8) {
+                        subtypes.put(id,subtype); edges.put(id,new int[]{u8(raw,offset+7)});
+                    } else if(subtype==0x03 && length>=9) {
+                        subtypes.put(id,subtype); edges.put(id,new int[]{u8(raw,offset+8)});
+                    } else if(subtype==0x0C && length>=7) {
+                        subtypes.put(id,subtype); edges.put(id,new int[]{u8(raw,offset+4)});
+                    } else if(subtype==0x0B && length>=8) {
+                        int pins=u8(raw,offset+4);
+                        if(pins>0 && length>=7+pins) {
+                            subtypes.put(id,subtype);
+                            if(pins==1) edges.put(id,new int[]{u8(raw,offset+5)});
+                        }
+                    } else if(subtype==0x0A && length>=8) {
+                        subtypes.put(id,subtype);
+                    }
+                } else if(sub==2 && subtype==0x01) {
+                    terminalLinks.add(u8(raw,offset+3));
+                }
+            }
+            offset+=length;
+        }
+
+        java.util.Set<Integer> reachable = new java.util.HashSet<>();
+        for(int terminalId:terminalLinks) {
+            java.util.Set<Integer> visited=new java.util.HashSet<>();
+            collectReachableClockSources(terminalId,subtypes,edges,visited,reachable);
+        }
+        for(ClockSource clock:readable) if(reachable.contains(clock.entityId)) result.add(clock);
+        return result;
+    }
+
+    private static void collectReachableClockSources(int id, java.util.Map<Integer,Integer> subtypes,
+            java.util.Map<Integer,int[]> edges, java.util.Set<Integer> visited,
+            java.util.Set<Integer> result) {
+        if(visited.contains(id)) return;
+        Integer subtype=subtypes.get(id);
+        if(subtype==null) return;
+        if(subtype==0x0A) { result.add(id); return; }
+        int[] next=edges.get(id);
+        if(next==null || next.length!=1 || next[0]==0) return;
+        java.util.Set<Integer> branch=new java.util.HashSet<>(visited);
+        branch.add(id);
+        collectReachableClockSources(next[0],subtypes,edges,branch,result);
+    }
+
     private static final class ClockEntity {
         final int id, subtype, interfaceNumber, controlAccess;
         final int[] sources;
