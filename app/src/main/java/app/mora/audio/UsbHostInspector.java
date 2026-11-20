@@ -1,6 +1,7 @@
 package app.mora.audio;
 
 import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
@@ -18,6 +19,26 @@ final class UsbHostInspector {
             }
         }
         return null;
+    }
+
+    /** Opens the permitted device briefly, reads raw descriptors, then closes it immediately. */
+    static String inspectRawDescriptors(UsbManager manager, UsbDevice device) {
+        if (manager == null || device == null) return "USB manager/perangkat tidak tersedia.";
+        if (!manager.hasPermission(device)) return "Izin USB belum diberikan. Raw descriptor tidak dibaca.";
+        UsbDeviceConnection connection = null;
+        try {
+            connection = manager.openDevice(device);
+            if (connection == null) return "Gagal membuka perangkat USB untuk membaca descriptor.";
+            byte[] raw = connection.getRawDescriptors();
+            return UsbAudioDescriptorParser.parse(raw);
+        } catch (RuntimeException error) {
+            return "Gagal membaca raw USB descriptor: " + error.getClass().getSimpleName()
+                + ": " + String.valueOf(error.getMessage());
+        } finally {
+            if (connection != null) {
+                try { connection.close(); } catch (RuntimeException ignored) { }
+            }
+        }
     }
 
     static String inspect(UsbManager manager) {
