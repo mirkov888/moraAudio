@@ -2,6 +2,14 @@
 package app.mora.audio;
 
 import android.app.Activity;
+import android.graphics.Color;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.RippleDrawable;
+import android.view.WindowInsets;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.materialswitch.MaterialSwitch;
+import com.google.android.material.slider.LabelFormatter;
+import com.google.android.material.slider.Slider;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -76,8 +84,15 @@ public class MainActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final List<View> pages = new ArrayList<>();
+    private final List<LinearLayout> contents = new ArrayList<>();
     private final TextView[] tabs = new TextView[4];
-    private final View[] tabBars = new View[4];
+    private final View[] tabPills = new View[4];
+    private final ImageView[] tabIcons = new ImageView[4];
+    private static final int[] TAB_ICONS = {R.drawable.ic_tab_home, R.drawable.ic_tab_sound, R.drawable.ic_tab_tune, R.drawable.ic_tab_system};
+    private FrameLayout rootView;
+    private AuroraView aurora;
+    private View tabBar, topScrim, bottomScrim;
+    private int insetTop, insetBottom, curTab = -1;
     private final LinearLayout[] modeCards = new LinearLayout[3];
     private final List<View> bound = new ArrayList<>();
 
@@ -120,42 +135,102 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        getWindow().setStatusBarColor(BG);
-        getWindow().setNavigationBarColor(BG);
-        getWindow().getDecorView().setSystemUiVisibility(0);
+        android.view.Window window = getWindow();
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
         if (android.os.Build.VERSION.SDK_INT >= 29) {
-            getWindow().setNavigationBarDividerColor(0xFF293341);
-            getWindow().setStatusBarContrastEnforced(false);
-            getWindow().setNavigationBarContrastEnforced(false);
+            window.setNavigationBarContrastEnforced(false);
+            window.setStatusBarContrastEnforced(false);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false);
+        } else {
+            window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
         }
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BG);
-        root.setFitsSystemWindows(true);
+        FrameLayout root = new FrameLayout(this);
+        rootView = root;
+        aurora = new AuroraView(this);
+        root.addView(aurora, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         FrameLayout body = new FrameLayout(this);
         pages.add(page(body, buildHome()));
         pages.add(page(body, buildSound()));
         pages.add(page(body, buildTuning()));
         pages.add(page(body, buildSystem()));
-        root.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        root.addView(buildTabBar(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)));
+        root.addView(body, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        topScrim = new View(this);
+        topScrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[]{0xE6070B11, 0x00070B11}));
+        root.addView(topScrim, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(28), Gravity.TOP));
+        bottomScrim = new View(this);
+        bottomScrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
+            new int[]{0xF2070B11, 0x00070B11}));
+        root.addView(bottomScrim, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(140), Gravity.BOTTOM));
+
+        tabBar = buildTabBar();
+        FrameLayout.LayoutParams tabParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(68), Gravity.BOTTOM);
+        tabParams.setMargins(dp(16), 0, dp(16), dp(12));
+        root.addView(tabBar, tabParams);
+
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets system = insets.getInsets(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                insetTop = system.top;
+                insetBottom = system.bottom;
+            } else {
+                insetTop = insets.getSystemWindowInsetTop();
+                insetBottom = insets.getSystemWindowInsetBottom();
+            }
+            applyInsets();
+            return insets;
+        });
         setContentView(root);
+        applyInsets();
+        root.requestApplyInsets();
         registerUsbReceiver();
         showTab(0);
         refresh();
     }
 
+    private void applyInsets() {
+        for (LinearLayout content : contents) {
+            content.setPadding(dp(16), insetTop + dp(16), dp(16), insetBottom + dp(112));
+        }
+        if (topScrim != null && topScrim.getLayoutParams() != null) {
+            topScrim.getLayoutParams().height = insetTop + dp(28);
+            topScrim.requestLayout();
+        }
+        if (bottomScrim != null && bottomScrim.getLayoutParams() != null) {
+            bottomScrim.getLayoutParams().height = insetBottom + dp(140);
+            bottomScrim.requestLayout();
+        }
+        if (tabBar != null && tabBar.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) tabBar.getLayoutParams();
+            params.bottomMargin = insetBottom + dp(12);
+            tabBar.setLayoutParams(params);
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        if (aurora != null) aurora.setRunning(true);
         if (heroTitle != null) { refresh(); startLivePolling(); }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        if (aurora != null) aurora.setRunning(false);
         livePolling = false;
         liveHandler.removeCallbacks(livePoll);
     }
@@ -177,7 +252,7 @@ public class MainActivity extends Activity {
         ScrollView sv = new ScrollView(this);
         sv.setFillViewport(true);
         sv.setVerticalScrollBarEnabled(false);
-        content.setPadding(dp(16), dp(14), dp(16), dp(24));
+        contents.add(content);
         sv.addView(content, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         parent.addView(sv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         return sv;
@@ -368,49 +443,72 @@ public class MainActivity extends Activity {
     private View buildTabBar() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackground(glassSurface(0xF21A222D, 0x33FFFFFF, false));
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(8), dp(6), dp(8), dp(6));
+        bar.setBackground(glass(34, 0, 1.6f, 0xB30B1119));
         bar.setElevation(dp(12));
         for (int i = 0; i < 4; i++) {
-            final int idx = i;
+            final int index = i;
             LinearLayout cell = new LinearLayout(this);
             cell.setOrientation(LinearLayout.VERTICAL);
             cell.setGravity(Gravity.CENTER_HORIZONTAL);
-            View ind = new View(this);
-            GradientDrawable gd = new GradientDrawable();
-            gd.setColor(ACCENT);
-            gd.setCornerRadius(dp(2));
-            ind.setBackground(gd);
-            ind.setElevation(dp(2));
-            cell.addView(ind, new LinearLayout.LayoutParams(dp(28), dp(3)));
-            TextView t = label(TAB_NAMES[i], 13, MUTED, true);
-            t.setGravity(Gravity.CENTER);
-            cell.addView(t, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-            cell.setOnClickListener(v -> showTab(idx));
-            tabs[i] = t;
-            tabBars[i] = ind;
-            bar.addView(cell, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+            FrameLayout pill = new FrameLayout(this);
+            ImageView icon = new ImageView(this);
+            icon.setImageResource(TAB_ICONS[i]);
+            icon.setContentDescription(TAB_NAMES[i]);
+            pill.addView(icon, new FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER));
+            cell.addView(pill, new LinearLayout.LayoutParams(dp(60), dp(32)));
+            TextView title = label(TAB_NAMES[i], 12, MUTED, true);
+            title.setGravity(Gravity.CENTER);
+            cell.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            cell.setOnClickListener(v -> showTab(index));
+            tabs[i] = title;
+            tabPills[i] = pill;
+            tabIcons[i] = icon;
+            bar.addView(cell, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
         }
         return bar;
     }
 
     private void showTab(int idx) {
-        for (int i = 0; i < pages.size(); i++) pages.get(i).setVisibility(i == idx ? View.VISIBLE : View.GONE);
+        boolean changed = curTab != idx;
+        curTab = idx;
+        for (int i = 0; i < pages.size(); i++) {
+            pages.get(i).setVisibility(i == idx ? View.VISIBLE : View.GONE);
+        }
         for (int i = 0; i < 4; i++) {
-            tabs[i].setTextColor(i == idx ? ACCENT : MUTED);
-            tabBars[i].setVisibility(i == idx ? View.VISIBLE : View.INVISIBLE);
+            boolean selected = i == idx;
+            tabs[i].setTextColor(selected ? TEXT : MUTED);
+            tabIcons[i].setColorFilter(selected ? 0xFFC8FFF8 : MUTED);
+            if (selected) {
+                GradientDrawable pill = new GradientDrawable();
+                pill.setColor(0x403DD6C6);
+                pill.setCornerRadius(dp(16));
+                pill.setStroke(dp(1), 0x663DD6C6);
+                tabPills[i].setBackground(pill);
+            } else {
+                tabPills[i].setBackground(null);
+            }
+        }
+        if (changed) {
+            View page = pages.get(idx);
+            page.setAlpha(0f);
+            page.animate().alpha(1f).setDuration(220).start();
         }
     }
 
     // ------------------------------------------------------------------ widgets
-    /** Soft translucent tonal surface: a restrained glass treatment without runtime blur cost. */
-    private GradientDrawable glassSurface(int color, int stroke, boolean heroSurface) {
-        int top = heroSurface ? 0xE62A5960 : ((color & 0x00FFFFFF) | 0xF2000000);
-        int bottom = heroSurface ? 0xE622304F : ((color & 0x00FFFFFF) | 0xFA000000);
-        GradientDrawable drawable = new GradientDrawable(
-            GradientDrawable.Orientation.TL_BR, new int[]{top, bottom});
-        drawable.setCornerRadius(dp(heroSurface ? 26 : 24));
-        drawable.setStroke(dp(1), stroke);
-        return drawable;
+    private Drawable glass(int radiusDp, int tint, float strength, int under) {
+        return new GlassDrawable(dp(radiusDp), Math.max(1, dp(1)), tint, strength, under);
+    }
+
+    private Drawable ripple(Drawable content, int radiusDp) {
+        GradientDrawable mask = new GradientDrawable();
+        mask.setColor(Color.WHITE);
+        mask.setCornerRadius(dp(radiusDp));
+        return new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), content, mask);
     }
 
     private TextView label(String s, int sp, int color, boolean bold) {
@@ -431,50 +529,53 @@ public class MainActivity extends Activity {
 
     private LinearLayout card() {
         LinearLayout c = column();
-        c.setPadding(dp(16), dp(10), dp(16), dp(10));
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(CARD);
-        g.setCornerRadius(dp(24));
-        g.setStroke(dp(1), 0x332F4052);
-        c.setBackground(glassSurface(CARD, 0x332F4052, false));
+        c.setPadding(dp(18), dp(10), dp(18), dp(10));
+        c.setBackground(glass(24, 0, 1f, 0));
         c.setElevation(dp(1));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, dp(6), 0, 0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(8), 0, 0);
         c.setLayoutParams(lp);
         return c;
     }
 
     private TextView button(String s, boolean primary) {
-        TextView b = label(s, 15, primary ? 0xFF062623 : TEXT, true);
-        b.setGravity(Gravity.CENTER);
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(primary ? ACCENT : CARD2);
-        g.setCornerRadius(dp(18));
-        g.setStroke(dp(1), primary ? 0x669ADFD6 : 0x443C4A5D);
-        android.graphics.drawable.RippleDrawable ripple = new android.graphics.drawable.RippleDrawable(
-            ColorStateList.valueOf(0x44FFFFFF), g, null);
-        b.setBackground(ripple);
-        b.setElevation(primary ? dp(2) : 0);
-        b.setClickable(true);
+        MaterialButton b = new MaterialButton(this);
+        b.setText(s);
+        b.setAllCaps(false);
+        b.setTextSize(15);
+        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        b.setInsetTop(0);
+        b.setInsetBottom(0);
+        b.setCornerRadius(dp(24));
+        b.setTextColor(primary ? 0xFF00201D : TEXT);
+        b.setBackgroundTintList(ColorStateList.valueOf(primary ? ACCENT : 0x26FFFFFF));
+        if (!primary) {
+            b.setStrokeWidth(dp(1));
+            b.setStrokeColor(ColorStateList.valueOf(0x40FFFFFF));
+        }
+        b.setRippleColor(ColorStateList.valueOf(primary ? 0x33FFFFFF : 0x22FFFFFF));
         return b;
     }
 
-    private View action(String title, String sub, View.OnClickListener l) {
-        LinearLayout r = column();
-        r.setPadding(dp(16), dp(14), dp(16), dp(14));
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(CARD);
-        g.setCornerRadius(dp(22));
-        g.setStroke(dp(1), 0x332F4052);
-        r.setBackground(glassSurface(CARD, 0x332F4052, false));
-        r.setElevation(dp(1));
-        r.addView(label(title, 15, TEXT, true));
-        r.addView(label(sub, 12, MUTED, false));
-        r.setOnClickListener(l);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, dp(6), 0, 0);
-        r.setLayoutParams(lp);
-        return r;
+    private View action(String title, String sub, View.OnClickListener listener) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(18), dp(14), dp(14), dp(14));
+        row.setBackground(ripple(glass(22, 0, 1f, 0), 22));
+        LinearLayout text = column();
+        text.addView(label(title, 16, TEXT, true));
+        text.addView(label(sub, 13, MUTED, false));
+        row.addView(text, new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(label("\u203A", 26, MUTED, false));
+        row.setOnClickListener(listener);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(8), 0, 0);
+        row.setLayoutParams(lp);
+        return row;
     }
 
     private TextView stat(LinearLayout parent, String name) {
@@ -490,54 +591,60 @@ public class MainActivity extends Activity {
         return v;
     }
 
-    private void styleMode(LinearLayout m, boolean active) {
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(active ? 0xFF203A42 : CARD);
-        g.setCornerRadius(dp(22));
-        g.setStroke(dp(active ? 2 : 1), active ? ACCENT : 0x443C4A5D);
-        m.setBackground(g);
+    private void styleMode(LinearLayout mode, boolean active) {
+        mode.setBackground(ripple(active
+            ? glass(22, ACCENT, 1.3f, 0) : glass(22, 0, 1f, 0), 22));
+        if (mode.getChildCount() > 0 && mode.getChildAt(0) instanceof TextView) {
+            ((TextView) mode.getChildAt(0)).setTextColor(active ? ACCENT : TEXT);
+        }
     }
 
-    private View toggle(final Ctl c) {
-        LinearLayout r = new LinearLayout(this);
-        r.setOrientation(LinearLayout.HORIZONTAL);
-        r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setPadding(0, dp(8), 0, dp(8));
-        r.addView(label(c.label, 15, TEXT, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        Switch s = new Switch(this);
-        s.setTag(c);
-        s.setThumbTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}}, new int[]{ACCENT, 0xFF8794A3}));
-        s.setTrackTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}}, new int[]{0xFF1E6E66, 0xFF2A3440}));
-        s.setOnCheckedChangeListener((v, on) -> {
-            if (!binding) sendConfig(c.key, on ? "1" : "0");
+    private View toggle(final Ctl control) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(6), 0, dp(6));
+        row.addView(label(control.label, 16, TEXT, false),
+            new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        MaterialSwitch toggle = new MaterialSwitch(this);
+        toggle.setTag(control);
+        toggle.setOnCheckedChangeListener((view, checked) -> {
+            if (!binding) sendConfig(control.key, checked ? "1" : "0");
         });
-        bound.add(s);
-        r.addView(s);
-        return r;
+        bound.add(toggle);
+        row.addView(toggle);
+        return row;
     }
 
-    private View slider(final Ctl c, int max) {
-        LinearLayout r = column();
-        r.setPadding(0, 0, 0, dp(6));
-        c.valueLabel = label(c.label, 12, MUTED, false);
-        r.addView(c.valueLabel);
-        SeekBar sb = new SeekBar(this);
-        sb.setMax(max / c.step);
-        sb.setTag(c);
-        sb.setProgressTintList(ColorStateList.valueOf(ACCENT));
-        sb.setThumbTintList(ColorStateList.valueOf(ACCENT));
-        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar s, int p, boolean fromUser) {
-                c.valueLabel.setText(c.label + ": " + (p * c.step) + c.unit);
-            }
-            @Override public void onStartTrackingTouch(SeekBar s) { }
-            @Override public void onStopTrackingTouch(SeekBar s) {
-                if (!binding) sendConfig(c.key, String.valueOf(s.getProgress() * c.step));
+    private View slider(final Ctl control, int max) {
+        LinearLayout row = column();
+        row.setPadding(0, dp(2), 0, dp(6));
+        control.valueLabel = label(control.label, 13, MUTED, false);
+        row.addView(control.valueLabel);
+        Slider slider = new Slider(this);
+        slider.setValueFrom(0f);
+        slider.setValueTo((float) (max / control.step));
+        slider.setStepSize(1f);
+        slider.setValue(0f);
+        slider.setTag(control);
+        slider.setLabelBehavior(LabelFormatter.LABEL_GONE);
+        slider.setTrackActiveTintList(ColorStateList.valueOf(ACCENT));
+        slider.setThumbTintList(ColorStateList.valueOf(ACCENT));
+        slider.setTrackInactiveTintList(ColorStateList.valueOf(0x33FFFFFF));
+        slider.setHaloTintList(ColorStateList.valueOf(0x293DD6C6));
+        slider.addOnChangeListener((view, value, fromUser) ->
+            control.valueLabel.setText(control.label + ": "
+                + (Math.round(value) * control.step) + control.unit));
+        slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
+            @Override public void onStartTrackingTouch(Slider view) { }
+            @Override public void onStopTrackingTouch(Slider view) {
+                if (!binding) sendConfig(control.key,
+                    String.valueOf(Math.round(view.getValue()) * control.step));
             }
         });
-        bound.add(sb);
-        r.addView(sb);
-        return r;
+        bound.add(slider);
+        row.addView(slider);
+        return row;
     }
 
     private int dp(int v) {
@@ -786,10 +893,10 @@ public class MainActivity extends Activity {
         binding = true;
         for (View v : bound) {
             Ctl c = (Ctl) v.getTag();
-            if (v instanceof Switch) {
-                ((Switch) v).setChecked(j.optInt(c.field) == 1);
-            } else if (v instanceof SeekBar) {
-                ((SeekBar) v).setProgress(Math.max(0, j.optInt(c.field) / c.step));
+            if (v instanceof MaterialSwitch) {
+                ((MaterialSwitch) v).setChecked(j.optInt(c.field) == 1);
+            } else if (v instanceof Slider) {
+                ((Slider) v).setValue(Math.max(0, j.optInt(c.field) / c.step));
             }
         }
         binding = false;
