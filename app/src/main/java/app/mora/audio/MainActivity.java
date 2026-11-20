@@ -2,6 +2,12 @@
 package app.mora.audio;
 
 import android.app.Activity;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbManager;
 import android.media.AudioManager;
 import android.media.AudioDeviceInfo;
 import android.media.AudioPlaybackConfiguration;
@@ -47,6 +53,7 @@ public class MainActivity extends Activity {
     private static final int BAD = 0xFFFF6B6B;
     private static final int OK = 0xFF5BD68A;
     private static final int WARN = 0xFFFFC857;
+    private static final String ACTION_USB_PERMISSION = "app.mora.audio.USB_PERMISSION";
 
     private static final String[] MODES = {"audiophile", "movie", "power_saver"};
     private static final String[] MODE_TITLES = {"Musik", "Film", "Hemat"};
@@ -82,6 +89,29 @@ public class MainActivity extends Activity {
     private final Runnable livePoll = new Runnable() { public void run() { if (livePolling) { refreshNowPlaying(); liveHandler.postDelayed(this, 1000); } } };
     private LinearLayout hero;
     private boolean binding;
+    private boolean usbReceiverRegistered;
+    private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (intent == null) return;
+            String action = intent.getAction();
+            if (ACTION_USB_PERMISSION.equals(action)) {
+                boolean granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false);
+                UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+                String name = device == null ? "USB DAC" : String.valueOf(device.getProductName());
+                String result = granted
+                    ? "Izin USB diberikan untuk " + name + ".\n\n" + UsbHostInspector.inspect((UsbManager) getSystemService(USB_SERVICE))
+                    : "Izin USB ditolak untuk " + name + ". Sambungkan ulang DAC atau izinkan akses saat diminta.";
+                if (logView != null) logView.setText(result);
+                toast(granted ? "Izin USB diberikan" : "Izin USB ditolak");
+            } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)
+                    || UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
+                if (logView != null) logView.setText(
+                    UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)
+                        ? "Perangkat USB tersambung. Ketuk Periksa perangkat USB untuk meminta izin."
+                        : "Perangkat USB dilepas.");
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle b) {
@@ -102,6 +132,7 @@ public class MainActivity extends Activity {
         root.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         root.addView(buildTabBar(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)));
         setContentView(root);
+        registerUsbReceiver();
         showTab(0);
         refresh();
     }
@@ -124,6 +155,10 @@ public class MainActivity extends Activity {
         super.onDestroy();
         livePolling = false;
         liveHandler.removeCallbacks(livePoll);
+        if (usbReceiverRegistered) {
+            unregisterReceiver(usbReceiver);
+            usbReceiverRegistered = false;
+        }
         io.shutdownNow();
     }
 
@@ -920,15 +955,43 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void registerUsbReceiver() {
+        IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
+        filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+        filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(usbReceiver, filter);
+        }
+        usbReceiverRegistered = true;
+    }
+
     private void showUsbHostReport() {
         showTab(3);
-        logView.setText("Memindai perangkat USB...");
-        io.execute(() -> {
-            android.hardware.usb.UsbManager manager =
-                (android.hardware.usb.UsbManager) getSystemService(USB_SERVICE);
-            final String report = UsbHostInspector.inspect(manager);
-            ui.post(() -> { if (logView != null) logView.setText(report); });
-        });
+        UsbManager manager = (UsbManager) getSystemService(USB_SERVICE);
+        if (manager == null) {
+            logView.setText("USB Host tidak tersedia pada perangkat ini.");
+            return;
+        }
+        UsbDevice device = UsbHostInspector.findAudioStreamingDevice(manager);
+        if (device == null) {
+            logView.setText(UsbHostInspector.inspect(manager)
+                + "\n\nBelum ditemukan interface USB AudioStreaming (class 1 / subclass 2).");
+            return;
+        }
+        if (manager.hasPermission(device)) {
+            logView.setText(UsbHostInspector.inspect(manager)
+                + "\n\nIzin USB sudah tersedia. Tahap berikutnya adalah validasi descriptor UAC.");
+            return;
+        }
+        logView.setText("Meminta izin akses USB untuk "
+            + String.valueOf(device.getProductName()) + "...\nKonfirmasi dialog Android yang muncul.");
+        Intent permissionIntent = new Intent(ACTION_USB_PERMISSION).setPackage(getPackageName());
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (android.os.Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, permissionIntent, flags);
+        manager.requestPermission(device, pendingIntent);
     }
 
     private void exportModuleBackup() {
