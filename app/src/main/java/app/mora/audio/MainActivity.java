@@ -368,7 +368,7 @@ public class MainActivity extends Activity {
     private View buildTabBar() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackground(glassSurface(0xF21A222D, 0x332FFFFFF, false));
+        bar.setBackground(glassSurface(0xF21A222D, 0x33FFFFFF, false));
         bar.setElevation(dp(12));
         for (int i = 0; i < 4; i++) {
             final int idx = i;
