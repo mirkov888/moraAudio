@@ -218,10 +218,16 @@ final class UsbAudioDescriptorParser {
      * as the playback clock.
      */
     static java.util.List<ClockSelector> findPlaybackClockSelectors(byte[] raw) {
+        return findPlaybackClockSelectors(raw, java.util.Collections.<Integer, Integer>emptyMap());
+    }
+
+    /** Returns only unresolved selectors on the currently selected playback path. */
+    static java.util.List<ClockSelector> findPlaybackClockSelectors(byte[] raw,
+            java.util.Map<Integer, Integer> selectedPins) {
         java.util.List<ClockSelector> result = new java.util.ArrayList<>();
         if (raw == null || raw.length == 0) return result;
         java.util.Map<Integer, ClockEntity> entities = parseClockEntities(raw);
-        java.util.Set<Integer> reachable = new java.util.HashSet<>();
+        java.util.Map<Integer, ClockEntity> pending = new java.util.LinkedHashMap<>();
         int offset = 0, cls = -1, sub = -1, protocol = -1;
         while (offset + 2 <= raw.length) {
             int length = u8(raw, offset), type = u8(raw, offset + 1);
@@ -231,32 +237,38 @@ final class UsbAudioDescriptorParser {
                 protocol = u8(raw, offset + 7);
             } else if (type == DESC_CS_INTERFACE && cls == 1 && sub == 2
                     && protocol == 0x20 && length >= 4 && u8(raw, offset + 2) == 0x01) {
-                collectReachableSelectors(u8(raw, offset + 3), entities,
-                    new java.util.HashSet<Integer>(), reachable);
+                collectPendingClockSelectors(u8(raw, offset + 3), entities, selectedPins,
+                    new java.util.HashSet<Integer>(), pending);
             }
             offset += length;
         }
-        for (int id : reachable) {
-            ClockEntity entity = entities.get(id);
-            if (entity != null && entity.subtype == 0x0B && entity.sources.length > 1) {
-                result.add(new ClockSelector(entity.id, entity.interfaceNumber,
-                    entity.controlAccess, entity.sources.clone()));
-            }
+        for (ClockEntity entity : pending.values()) {
+            result.add(new ClockSelector(entity.id, entity.interfaceNumber,
+                entity.controlAccess, entity.sources.clone()));
         }
         return result;
     }
 
-    private static void collectReachableSelectors(int id, java.util.Map<Integer, ClockEntity> entities,
-            java.util.Set<Integer> visited, java.util.Set<Integer> result) {
+    private static void collectPendingClockSelectors(int id,
+            java.util.Map<Integer, ClockEntity> entities,
+            java.util.Map<Integer, Integer> selectedPins, java.util.Set<Integer> visited,
+            java.util.Map<Integer, ClockEntity> pending) {
         if (!visited.add(id)) return;
         ClockEntity entity = entities.get(id);
         if (entity == null) return;
-        if (entity.subtype == 0x0B) result.add(id);
+        if (entity.subtype == 0x0B && entity.sources.length > 1) {
+            Integer pin = selectedPins == null ? null : selectedPins.get(id);
+            if (pin == null || pin < 1 || pin > entity.sources.length) {
+                pending.put(id, entity);
+                return;
+            }
+            collectPendingClockSelectors(entity.sources[pin - 1], entities, selectedPins, visited, pending);
+            return;
+        }
         for (int source : entity.sources) {
-            if (source != 0) collectReachableSelectors(source, entities, visited, result);
+            if (source != 0) collectPendingClockSelectors(source, entities, selectedPins, visited, pending);
         }
     }
-
     private static java.util.Map<Integer, ClockEntity> parseClockEntities(byte[] raw) {
         java.util.Map<Integer, ClockEntity> entities = new java.util.LinkedHashMap<>();
         int offset = 0, intf = -1, cls = -1, sub = -1, protocol = -1;
