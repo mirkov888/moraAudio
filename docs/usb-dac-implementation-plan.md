@@ -21,13 +21,13 @@ Any future privileged audio-policy modification must be reversible, backed up, s
 - The Android app requests USB Host permission for a detected AudioStreaming interface.
 - After permission is granted, it briefly opens the device, reads `UsbDeviceConnection.getRawDescriptors()`, and closes the connection immediately.
 - `UsbAudioDescriptorParser` defensively walks the returned descriptor stream and reports AudioControl/AudioStreaming interfaces, UAC protocol version, Type I channel/bit-depth fields, UAC1 discrete or continuous sample-rate declarations, and endpoint transfer/synchronization attributes.
-- UAC2/UAC3 clock rates are deliberately not guessed from the format descriptor. A later clock-entity control-query stage is required to discover the current/ranged clock rates.
+- UAC2 clock source entities with host-readable frequency controls are discovered from the AudioControl descriptors. The app issues read-only GET_CUR and bounded GET_RANGE requests, reports current/ranged frequencies, and never sends SET requests. UAC3 clock control remains unimplemented.
 - The parser is observational only. It does not claim an interface, select an alternate setting, send class-specific control requests, or transfer PCM.
 
 ## Next engineering gates
 
 1. Validate parser output against raw descriptor captures from multiple real DACs (UAC1 and UAC2).
-2. Add UAC2 clock entity graph parsing and safe GET_RANGE/GET_CUR requests with per-device capability reporting.
+2. Validate UAC2 clock entity graph traversal, selector/clock-multiplier topologies, and GET_RANGE/GET_CUR responses across real devices.
 3. Design endpoint ownership and alternate-setting negotiation.
 4. Prototype isochronous transport separately; do not treat Android bulk transfer APIs as a substitute for UAC isochronous audio.
 5. Only then integrate a playback engine and test disconnect, underrun, format switching, and bit-perfect claims.
