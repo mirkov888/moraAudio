@@ -299,6 +299,8 @@ public class MainActivity extends Activity {
         c.addView(action("Periksa pemasangan", "Root, mount, HAL, ViPER, konflik dan SELinux", v -> showModuleCheck()));
         c.addView(action("Laporan lengkap", "Baca laporan diagnostik tanpa mengubah pengaturan", v -> showModuleReport()));
         c.addView(action("Pantau suhu dan baterai", "Baca monitor bawaan modul", v -> showModuleMonitor()));
+        c.addView(section("USB DAC / UAC"));
+        c.addView(action("Periksa perangkat USB", "Baca descriptor USB dan deteksi interface AudioStreaming", v -> showUsbHostReport()));
         c.addView(section("Cadangan pengaturan"));
         c.addView(action("Ekspor cadangan", "Simpan konfigurasi ke Download/mora_backup.tar.gz", v -> exportModuleBackup()));
         c.addView(section("Log"));
@@ -915,6 +917,17 @@ public class MainActivity extends Activity {
             }
             final String result = out.isEmpty() ? "Data monitor tidak tersedia." : out;
             ui.post(() -> { if (logView != null) logView.setText(result); });
+        });
+    }
+
+    private void showUsbHostReport() {
+        showTab(3);
+        logView.setText("Memindai perangkat USB...");
+        io.execute(() -> {
+            android.hardware.usb.UsbManager manager =
+                (android.hardware.usb.UsbManager) getSystemService(USB_SERVICE);
+            final String report = UsbHostInspector.inspect(manager);
+            ui.post(() -> { if (logView != null) logView.setText(report); });
         });
     }
 
