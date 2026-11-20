@@ -81,6 +81,39 @@ public class UsbAudioDescriptorParserTest {
     }
 
     @Test
+    public void playbackClockFilteringReturnsOnlyReachableSource() {
+        byte[] raw = new byte[] {
+            9, 4, 0, 0, 0, 1, 1, 0x20, 0,
+            17, 0x24, 0x02, 4, 1, 1, 0, 9, 2, 3, 0, 0, 0, 0, 0, 0, 0,
+            8, 0x24, 0x0A, 9, 1, 1, 0, 0,
+            8, 0x24, 0x0A, 12, 1, 1, 0, 0,
+            9, 4, 1, 1, 1, 1, 2, 0x20, 0,
+            16, 0x24, 0x01, 4, 0, 1, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0
+        };
+
+        List<UsbAudioDescriptorParser.ClockSource> clocks =
+            UsbAudioDescriptorParser.findPlaybackClockSources(raw);
+
+        assertEquals(1, clocks.size());
+        assertEquals(9, clocks.get(0).entityId);
+    }
+
+    @Test
+    public void playbackClockFilteringSkipsAmbiguousSelector() {
+        byte[] raw = new byte[] {
+            9, 4, 0, 0, 0, 1, 1, 0x20, 0,
+            17, 0x24, 0x02, 4, 1, 1, 0, 11, 2, 3, 0, 0, 0, 0, 0, 0, 0,
+            9, 0x24, 0x0B, 11, 2, 9, 10, 1, 0,
+            8, 0x24, 0x0A, 9, 1, 1, 0, 0,
+            8, 0x24, 0x0A, 10, 1, 1, 0, 0,
+            9, 4, 1, 1, 1, 1, 2, 0x20, 0,
+            16, 0x24, 0x01, 4, 0, 1, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0
+        };
+
+        assertTrue(UsbAudioDescriptorParser.findPlaybackClockSources(raw).isEmpty());
+    }
+
+    @Test
     public void followsClockMultiplierToItsSource() {
         byte[] raw = new byte[] {
             9, 4, 0, 0, 0, 1, 1, 0x20, 0,
