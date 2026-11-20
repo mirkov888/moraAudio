@@ -71,7 +71,7 @@ final class UsbAudioDescriptorParser {
                         channels = u8(raw, offset + 10);
                     }
                     out.append("  AS General: terminalLink=").append(u8(raw, offset + 3));
-                    if (currentProtocol == 0x20 && length >= 17) {
+                    if (currentProtocol == 0x20 && length >= 16) {
                         long formats = u32(raw, offset + 6);
                         out.append(" channels=").append(channels)
                             .append(" bmFormats=0x").append(Long.toHexString(formats));
@@ -79,16 +79,16 @@ final class UsbAudioDescriptorParser {
                     out.append('\n');
                 } else if (currentSubclass == 2 && subtype == 0x02 && length >= 6) {
                     int formatType = u8(raw, offset + 3);
-                    if (currentProtocol == 0x20 || currentProtocol == 0x30) {
+                    if (currentProtocol == 0x20) {
                         subslot = u8(raw, offset + 4);
                         bitResolution = u8(raw, offset + 5);
                         out.append("  Format Type ").append(formatType)
                             .append(": subslot=").append(subslot).append(" byte, bitResolution=")
                             .append(bitResolution).append(" bit");
                         if (channels > 0) out.append(", channels=").append(channels);
-                        out.append("\n  Sample rate: tidak tercantum pada descriptor format UAC2/UAC3;")
+                        out.append("\n  Sample rate: tidak tercantum pada descriptor format UAC2;")
                             .append(" perlu query clock entity/control range.\n");
-                    } else if (formatType == 1 && length >= 8) {
+                    } else if (currentProtocol == 0x30) {\n                        out.append("  UAC3 format descriptor: detail parsing belum didukung.\\n");\n                    } else if (formatType == 1 && length >= 8) {
                         channels = u8(raw, offset + 4);
                         subslot = u8(raw, offset + 5);
                         bitResolution = u8(raw, offset + 6);
@@ -142,7 +142,7 @@ final class UsbAudioDescriptorParser {
             .append("\nAudioStreaming: ").append(foundStreaming ? "terdeteksi" : "tidak terdeteksi");
         if (foundStreaming) {
             out.append("\nCatatan: data ini hasil parsing descriptor mentah, bukan hasil negosiasi clock/format.")
-                .append(" UAC2/UAC3 sample-rate range belum di-query.");
+                .append(" UAC2 clock frequency dibaca terpisah melalui control request jika didukung.");
         }
         out.append("\nBelum claimInterface, belum SET_INTERFACE, belum transfer PCM,")
             .append(" dan belum membuktikan exclusive playback/bit-perfect.");
