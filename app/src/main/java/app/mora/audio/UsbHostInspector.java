@@ -33,7 +33,7 @@ final class UsbHostInspector {
             byte[] raw = connection.getRawDescriptors();
             StringBuilder report = new StringBuilder(UsbAudioDescriptorParser.parse(raw));
             java.util.List<UsbAudioDescriptorParser.ClockSource> clocks =
-                UsbAudioDescriptorParser.findReadableClockSources(raw);
+                UsbAudioDescriptorParser.findPlaybackClockSources(raw);
             if (!clocks.isEmpty()) {
                 report.append("\n\n=== UAC2 CLOCK FREQUENCY (READ ONLY) ===");
                 for (UsbAudioDescriptorParser.ClockSource clock : clocks) {
