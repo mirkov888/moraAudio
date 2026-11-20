@@ -2,6 +2,7 @@ package app.mora.audio;
 
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
+import android.hardware.usb.UsbConstants;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
@@ -160,9 +161,9 @@ final class UsbHostInspector {
 
     private static String transferName(int type) {
         switch (type) {
-            case UsbEndpoint.TRANSACTION_ISOCHRONOUS: return "isochronous";
-            case UsbEndpoint.TRANSACTION_BULK: return "bulk";
-            case UsbEndpoint.TRANSACTION_INTERRUPT: return "interrupt";
+            case UsbConstants.USB_ENDPOINT_XFER_ISOC: return "isochronous";
+            case UsbConstants.USB_ENDPOINT_XFER_BULK: return "bulk";
+            case UsbConstants.USB_ENDPOINT_XFER_INT: return "interrupt";
             default: return "control/unknown";
         }
     }
