@@ -98,8 +98,12 @@ public class MainActivity extends Activity {
                 boolean granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false);
                 UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
                 String name = device == null ? "USB DAC" : String.valueOf(device.getProductName());
+                UsbManager manager = (UsbManager) getSystemService(USB_SERVICE);
+                UsbDevice audioDevice = UsbHostInspector.findAudioStreamingDevice(manager);
                 String result = granted
-                    ? "Izin USB diberikan untuk " + name + ".\n\n" + UsbHostInspector.inspect((UsbManager) getSystemService(USB_SERVICE))
+                    ? "Izin USB diberikan untuk " + name + ".\n\n"
+                        + UsbHostInspector.inspect(manager) + "\n\n"
+                        + UsbHostInspector.inspectRawDescriptors(manager, device != null ? device : audioDevice)
                     : "Izin USB ditolak untuk " + name + ". Sambungkan ulang DAC atau izinkan akses saat diminta.";
                 if (logView != null) logView.setText(result);
                 toast(granted ? "Izin USB diberikan" : "Izin USB ditolak");
@@ -981,8 +985,8 @@ public class MainActivity extends Activity {
             return;
         }
         if (manager.hasPermission(device)) {
-            logView.setText(UsbHostInspector.inspect(manager)
-                + "\n\nIzin USB sudah tersedia. Tahap berikutnya adalah validasi descriptor UAC.");
+            logView.setText(UsbHostInspector.inspect(manager) + "\n\n"
+                + UsbHostInspector.inspectRawDescriptors(manager, device));
             return;
         }
         logView.setText("Meminta izin akses USB untuk "
