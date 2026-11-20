@@ -191,6 +191,41 @@ public class UsbAudioDescriptorParserTest {
     }
 
     @Test
+    public void discoversNestedSelectorOnlyAfterParentPinIsKnown() {
+        byte[] raw = new byte[] {
+            9, 4, 0, 0, 0, 1, 1, 0x20, 0,
+            17, 0x24, 0x02, 4, 1, 1, 0, 11, 2, 3, 0, 0, 0, 0, 0, 0, 0,
+            9, 0x24, 0x0B, 11, 2, 9, 12, 1, 0,
+            8, 0x24, 0x0A, 9, 1, 1, 0, 0,
+            9, 0x24, 0x0B, 12, 2, 10, 13, 1, 0,
+            8, 0x24, 0x0A, 10, 1, 1, 0, 0,
+            8, 0x24, 0x0A, 13, 1, 1, 0, 0,
+            9, 4, 1, 1, 1, 1, 2, 0x20, 0,
+            16, 0x24, 0x01, 4, 0, 1, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0
+        };
+
+        List<UsbAudioDescriptorParser.ClockSelector> first =
+            UsbAudioDescriptorParser.findPlaybackClockSelectors(raw);
+        assertEquals(1, first.size());
+        assertEquals(11, first.get(0).entityId);
+
+        java.util.Map<Integer, Integer> selectedPins = new java.util.HashMap<>();
+        selectedPins.put(11, 2);
+        List<UsbAudioDescriptorParser.ClockSelector> second =
+            UsbAudioDescriptorParser.findPlaybackClockSelectors(raw, selectedPins);
+        assertEquals(1, second.size());
+        assertEquals(12, second.get(0).entityId);
+
+        selectedPins.put(12, 2);
+        assertTrue(UsbAudioDescriptorParser.findPlaybackClockSelectors(raw, selectedPins).isEmpty());
+
+        List<UsbAudioDescriptorParser.ClockSource> clocks =
+            UsbAudioDescriptorParser.findPlaybackClockSources(raw, selectedPins);
+        assertEquals(1, clocks.size());
+        assertEquals(13, clocks.get(0).entityId);
+    }
+
+    @Test
     public void emptyInputIsReportedClearly() {
         assertEquals("Raw descriptor: kosong/tidak tersedia.",
             UsbAudioDescriptorParser.parse(new byte[0]));
