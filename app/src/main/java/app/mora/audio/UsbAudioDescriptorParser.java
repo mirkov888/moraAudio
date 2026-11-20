@@ -67,12 +67,12 @@ final class UsbAudioDescriptorParser {
                     out.append("  AC header: UAC ").append(versionName(version))
                         .append(" (bcdADC=0x").append(hex4(version)).append(")\n");
                 } else if (currentSubclass == 2 && subtype == 0x01) {
-                    if (currentProtocol == 0x20 && length >= 12) {
-                        channels = u8(raw, offset + 11);
+                    if (currentProtocol == 0x20 && length >= 16) {
+                        channels = u8(raw, offset + 10);
                     }
                     out.append("  AS General: terminalLink=").append(u8(raw, offset + 3));
                     if (currentProtocol == 0x20 && length >= 17) {
-                        long formats = u32(raw, offset + 7);
+                        long formats = u32(raw, offset + 6);
                         out.append(" channels=").append(channels)
                             .append(" bmFormats=0x").append(Long.toHexString(formats));
                     }
