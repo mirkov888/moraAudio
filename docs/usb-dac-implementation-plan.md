@@ -22,6 +22,10 @@ Any future privileged audio-policy modification must be reversible, backed up, s
 - After permission is granted, it briefly opens the device, reads `UsbDeviceConnection.getRawDescriptors()`, and closes the connection immediately.
 - `UsbAudioDescriptorParser` defensively walks the returned descriptor stream and reports AudioControl/AudioStreaming interfaces, UAC protocol version, Type I channel/bit-depth fields, UAC1 discrete or continuous sample-rate declarations, and endpoint transfer/synchronization attributes.
 - UAC2 clock source entities with host-readable frequency controls are discovered from the AudioControl descriptors. The app issues read-only GET_CUR and bounded GET_RANGE requests, reports current/ranged frequencies, and never sends SET requests. UAC3 clock control remains unimplemented.
+- UAC2 clock topology parsing now links each AudioStreaming `terminalLink` to its AudioControl terminal and follows its clock-source reference through Clock Multiplier entities.
+- Clock Selector entities with multiple inputs are reported as ambiguous; the parser deliberately does not guess the selected pin. A future read-only selector GET_CUR step must resolve that pin before querying a source as active.
+- The topology resolver detects missing entity references and cycles. Synthetic tests cover direct source, multiplier, ambiguous selector, and cycle cases.
+- The current inspector still performs read-only clock queries for every source that advertises readable frequency controls. Until selector GET_CUR and reachable-source filtering are implemented, those values are inventory data, not proof that a clock is active for the selected playback terminal.
 - The scanner reports Android-exposed interface alternate-setting numbers, endpoint transfer types, maximum packet sizes, and polling intervals. This is inventory only; it does not select an alternate setting or claim an interface.
 - UAC2 clock GET_CUR/GET_RANGE requests are read-only class-specific control requests. No clock SET request is sent.\n- The parser does not claim a streaming interface or transfer PCM.
 
