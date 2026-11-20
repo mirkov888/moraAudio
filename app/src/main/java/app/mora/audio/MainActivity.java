@@ -831,7 +831,7 @@ public class MainActivity extends Activity {
                 try {
                     JSONObject root = new JSONObject(check.out.trim());
                     org.json.JSONArray items = root.optJSONArray("items");
-                    StringBuilder readable = new StringBuilder("=== PEMERIKSAAN MODUL ===\\n");
+                    StringBuilder readable = new StringBuilder("=== PEMERIKSAAN MODUL ===\n");
                     if (items != null) {
                         for (int i = 0; i < items.length(); i++) {
                             JSONObject item = items.optJSONObject(i);
@@ -839,14 +839,14 @@ public class MainActivity extends Activity {
                             String status = item.optString("status", "warn").toUpperCase(java.util.Locale.ROOT);
                             readable.append(status).append("  ")
                                 .append(item.optString("title", item.optString("id", "Pemeriksaan")))
-                                .append("\\n    ").append(item.optString("detail", "")).append("\\n");
+                                .append("\n    ").append(item.optString("detail", "")).append("\n");
                         }
                     } else {
                         readable.append(check.out);
                     }
                     out = readable.toString();
                 } catch (Exception parseError) {
-                    out = "=== HASIL SETUP CHECK ===\\n" + check.out;
+                    out = "=== HASIL SETUP CHECK ===\n" + check.out;
                 }
             } else {
                 Root.Result status = Root.module("get_audio_status.sh", "");
@@ -854,12 +854,12 @@ public class MainActivity extends Activity {
                 Root.Result root = Root.run("id; echo; getenforce 2>/dev/null; echo; "
                     + "ls -ld /data/adb/modules/mora_audio_suite /data/adb/ksu/modules/mora_audio_suite "
                     + "/data/adb/ap/modules/mora_audio_suite 2>/dev/null");
-                out = "=== ROOT / MODULE PATH (fallback) ===\\n" + root.out
-                    + "\\n\\n=== AUDIO STATUS ===\\n" + status.out
-                    + "\\n\\n=== VIPER STATUS ===\\n" + viper.out
-                    + "\\n\\nChecklist bawaan tidak tersedia (kemungkinan modul versi lama).";
+                out = "=== ROOT / MODULE PATH (fallback) ===\n" + root.out
+                    + "\n\n=== AUDIO STATUS ===\n" + status.out
+                    + "\n\n=== VIPER STATUS ===\n" + viper.out
+                    + "\n\nChecklist bawaan tidak tersedia (kemungkinan modul versi lama).";
             }
-            final String result = out.length() > 60000 ? out.substring(0, 60000) + "\\n[output dipotong]" : out;
+            final String result = out.length() > 60000 ? out.substring(0, 60000) + "\n[output dipotong]" : out;
             ui.post(() -> { if (logView != null) logView.setText(result); });
         });
     }
@@ -877,12 +877,12 @@ public class MainActivity extends Activity {
                 Root.Result status = Root.module("get_audio_status.sh", "");
                 Root.Result viper = Root.module("viper_status.sh", "");
                 Root.Result flinger = Root.run("dumpsys media.audio_flinger 2>/dev/null");
-                out = "=== MORA AUDIO STATUS (fallback) ===\\n" + status.out
-                    + "\\n\\n=== VIPER DRIVER ===\\n" + viper.out
-                    + "\\n\\n=== AUDIO FLINGER ===\\n" + flinger.out
-                    + "\\n\\nLaporan bawaan tidak tersedia (kemungkinan modul versi lama).";
+                out = "=== MORA AUDIO STATUS (fallback) ===\n" + status.out
+                    + "\n\n=== VIPER DRIVER ===\n" + viper.out
+                    + "\n\n=== AUDIO FLINGER ===\n" + flinger.out
+                    + "\n\nLaporan bawaan tidak tersedia (kemungkinan modul versi lama).";
             }
-            final String result = out.length() > 60000 ? out.substring(0, 60000) + "\\n[output dipotong]" : out;
+            final String result = out.length() > 60000 ? out.substring(0, 60000) + "\n[output dipotong]" : out;
             ui.post(() -> { if (logView != null) logView.setText(result); });
         });
     }
@@ -897,12 +897,12 @@ public class MainActivity extends Activity {
             if (monitor.ok() && monitor.out != null && monitor.out.trim().startsWith("{")) {
                 try {
                     JSONObject data = new JSONObject(monitor.out.trim());
-                    out = "=== MONITOR SISTEM ===\\n"
-                        + "Baterai: " + data.optInt("level") + "%\\n"
-                        + "Status: " + data.optString("status", "?") + "\\n"
-                        + "Suhu baterai: " + data.optInt("bat_temp") + " °C\\n"
-                        + "Suhu maksimum: " + data.optInt("max_temp") + " °C\\n"
-                        + "Arus: " + data.optInt("current_ma") + " mA\\n"
+                    out = "=== MONITOR SISTEM ===\n"
+                        + "Baterai: " + data.optInt("level") + "%\n"
+                        + "Status: " + data.optString("status", "?") + "\n"
+                        + "Suhu baterai: " + data.optInt("bat_temp") + " °C\n"
+                        + "Suhu maksimum: " + data.optInt("max_temp") + " °C\n"
+                        + "Arus: " + data.optInt("current_ma") + " mA\n"
                         + "Tegangan: " + data.optInt("voltage_mv") + " mV";
                 } catch (Exception parseError) {
                     out = monitor.out;
@@ -911,7 +911,7 @@ public class MainActivity extends Activity {
                 Root.Result fallback = Root.run("echo '=== BATTERY ==='; dumpsys battery 2>/dev/null; "
                     + "echo; echo '=== THERMAL ==='; dumpsys thermalservice 2>/dev/null; "
                     + "echo; echo '=== AUDIO SERVER ==='; pidof audioserver 2>/dev/null");
-                out = fallback.out + "\\n\\nMonitor bawaan tidak tersedia (kemungkinan modul versi lama).";
+                out = fallback.out + "\n\nMonitor bawaan tidak tersedia (kemungkinan modul versi lama).";
             }
             final String result = out.isEmpty() ? "Data monitor tidak tersedia." : out;
             ui.post(() -> { if (logView != null) logView.setText(result); });
