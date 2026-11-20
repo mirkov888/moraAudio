@@ -1143,6 +1143,12 @@ public class MainActivity extends Activity {
             .show();
     }
 
+    /** Builds the hero's lightweight liquid-glass surface without real-time blur. */
+    private Drawable glassSurface(int fillColor, int tintColor, boolean prominent) {
+        return new GlassDrawable(dp(24), dp(1), tintColor,
+            prominent ? 0.22f : 0.12f, fillColor);
+    }
+
     private void toast(String s) {
         Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
     }
