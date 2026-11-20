@@ -22,12 +22,12 @@ Any future privileged audio-policy modification must be reversible, backed up, s
 - After permission is granted, it briefly opens the device, reads `UsbDeviceConnection.getRawDescriptors()`, and closes the connection immediately.
 - `UsbAudioDescriptorParser` defensively walks the returned descriptor stream and reports AudioControl/AudioStreaming interfaces, UAC protocol version, Type I channel/bit-depth fields, UAC1 discrete or continuous sample-rate declarations, and endpoint transfer/synchronization attributes.
 - UAC2 clock source entities with host-readable frequency controls are discovered from the AudioControl descriptors. The app issues read-only GET_CUR and bounded GET_RANGE requests, reports current/ranged frequencies, and never sends SET requests. UAC3 clock control remains unimplemented.
-- The parser is observational only. It does not claim an interface, select an alternate setting, send class-specific control requests, or transfer PCM.
+- The scanner reports Android-exposed interface alternate-setting numbers, endpoint transfer types, maximum packet sizes, and polling intervals. This is inventory only; it does not select an alternate setting or claim an interface.\n- UAC2 clock GET_CUR/GET_RANGE requests are read-only class-specific control requests. No clock SET request is sent.\n- The parser does not claim a streaming interface or transfer PCM.
 
 ## Next engineering gates
 
 1. Validate parser output against raw descriptor captures from multiple real DACs (UAC1 and UAC2).
 2. Validate UAC2 clock entity graph traversal, selector/clock-multiplier topologies, and GET_RANGE/GET_CUR responses across real devices.
-3. Design endpoint ownership and alternate-setting negotiation.
+3. Implement safe alternate-setting selection and interface ownership with explicit user-visible state and rollback on failure.
 4. Prototype isochronous transport separately; do not treat Android bulk transfer APIs as a substitute for UAC isochronous audio.
 5. Only then integrate a playback engine and test disconnect, underrun, format switching, and bit-perfect claims.
