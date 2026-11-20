@@ -32,8 +32,39 @@ final class UsbHostInspector {
             if (connection == null) return "Gagal membuka perangkat USB untuk membaca descriptor.";
             byte[] raw = connection.getRawDescriptors();
             StringBuilder report = new StringBuilder(UsbAudioDescriptorParser.parse(raw));
+            java.util.Map<Integer, Integer> selectedClockPins = new java.util.HashMap<>();
+            java.util.List<UsbAudioDescriptorParser.ClockSelector> selectors =
+                UsbAudioDescriptorParser.findPlaybackClockSelectors(raw);
+            if (!selectors.isEmpty()) {
+                report.append("\n\n=== UAC2 CLOCK SELECTOR (GET_CUR ONLY) ===");
+                for (UsbAudioDescriptorParser.ClockSelector selector : selectors) {
+                    report.append("\nClock Selector ID=").append(selector.entityId)
+                        .append(", inputs=").append(selector.inputClockIds.length);
+                    if (selector.controlAccess != 1 && selector.controlAccess != 3) {
+                        report.append(" [control tidak readable]");
+                        continue;
+                    }
+                    byte[] currentPin = new byte[1];
+                    int index = (selector.entityId << 8) | (selector.interfaceNumber & 0xff);
+                    int result = connection.controlTransfer(0xA1, 0x81, 0x0100, index,
+                        currentPin, 1, 1000);
+                    if (result != 1) {
+                        report.append(" [GET_CUR gagal/tidak didukung: ").append(result).append(']');
+                        continue;
+                    }
+                    int pin = currentPin[0] & 0xff;
+                    if (pin < 1 || pin > selector.inputClockIds.length) {
+                        report.append(" [GET_CUR mengembalikan pin di luar rentang: ").append(pin).append(']');
+                        continue;
+                    }
+                    selectedClockPins.put(selector.entityId, pin);
+                    report.append(" [pin aktif=").append(pin)
+                        .append(", Clock Source/Entity ID=").append(selector.inputClockIds[pin - 1])
+                        .append(']');
+                }
+            }
             java.util.List<UsbAudioDescriptorParser.ClockSource> clocks =
-                UsbAudioDescriptorParser.findPlaybackClockSources(raw);
+                UsbAudioDescriptorParser.findPlaybackClockSources(raw, selectedClockPins);
             if (!clocks.isEmpty()) {
                 report.append("\n\n=== UAC2 CLOCK FREQUENCY (READ ONLY) ===");
                 for (UsbAudioDescriptorParser.ClockSource clock : clocks) {
