@@ -64,6 +64,73 @@ public class UsbAudioDescriptorParserTest {
     }
 
     @Test
+    public void resolvesDirectUac2ClockFromStreamingTerminal() {
+        byte[] raw = new byte[] {
+            9, 4, 0, 0, 0, 1, 1, 0x20, 0,
+            17, 0x24, 0x02, 4, 1, 1, 0, 9, 2, 3, 0, 0, 0, 0, 0, 0, 0,
+            8, 0x24, 0x0A, 9, 1, 1, 0, 0,
+            9, 4, 1, 1, 1, 1, 2, 0x20, 0,
+            16, 0x24, 0x01, 4, 0, 1, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0
+        };
+
+        String topology = UsbAudioDescriptorParser.describeClockTopology(raw);
+
+        assertTrue(topology.contains("terminalLink=4"));
+        assertTrue(topology.contains("Clock Source 9"));
+        assertTrue(topology.contains("frequency readable"));
+    }
+
+    @Test
+    public void followsClockMultiplierToItsSource() {
+        byte[] raw = new byte[] {
+            9, 4, 0, 0, 0, 1, 1, 0x20, 0,
+            17, 0x24, 0x02, 4, 1, 1, 0, 10, 2, 3, 0, 0, 0, 0, 0, 0, 0,
+            7, 0x24, 0x0C, 10, 9, 1, 0,
+            8, 0x24, 0x0A, 9, 1, 1, 0, 0,
+            9, 4, 1, 1, 1, 1, 2, 0x20, 0,
+            16, 0x24, 0x01, 4, 0, 1, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0
+        };
+
+        String topology = UsbAudioDescriptorParser.describeClockTopology(raw);
+
+        assertTrue(topology.contains("Clock Multiplier 10"));
+        assertTrue(topology.contains("Clock Source 9"));
+    }
+
+    @Test
+    public void doesNotGuessSelectedClockSelectorPin() {
+        byte[] raw = new byte[] {
+            9, 4, 0, 0, 0, 1, 1, 0x20, 0,
+            17, 0x24, 0x02, 4, 1, 1, 0, 11, 2, 3, 0, 0, 0, 0, 0, 0, 0,
+            9, 0x24, 0x0B, 11, 2, 9, 10, 1, 0,
+            8, 0x24, 0x0A, 9, 1, 1, 0, 0,
+            8, 0x24, 0x0A, 10, 1, 1, 0, 0,
+            9, 4, 1, 1, 1, 1, 2, 0x20, 0,
+            16, 0x24, 0x01, 4, 0, 1, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0
+        };
+
+        String topology = UsbAudioDescriptorParser.describeClockTopology(raw);
+
+        assertTrue(topology.contains("Clock Selector 11"));
+        assertTrue(topology.contains("AMBIGUOUS"));
+        assertTrue(topology.contains("selected pin belum dibaca"));
+    }
+
+    @Test
+    public void detectsClockEntityReferenceCycle() {
+        byte[] raw = new byte[] {
+            9, 4, 0, 0, 0, 1, 1, 0x20, 0,
+            17, 0x24, 0x02, 4, 1, 1, 0, 10, 2, 3, 0, 0, 0, 0, 0, 0, 0,
+            7, 0x24, 0x0C, 10, 11, 1, 0,
+            7, 0x24, 0x0C, 11, 10, 1, 0,
+            9, 4, 1, 1, 1, 1, 2, 0x20, 0,
+            16, 0x24, 0x01, 4, 0, 1, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0
+        };
+
+        assertTrue(UsbAudioDescriptorParser.describeClockTopology(raw).contains("cycle"));
+    }
+
+    @Test
     public void emptyInputIsReportedClearly() {
         assertEquals("Raw descriptor: kosong/tidak tersedia.",
             UsbAudioDescriptorParser.parse(new byte[0]));
