@@ -30,7 +30,18 @@ final class UsbHostInspector {
             connection = manager.openDevice(device);
             if (connection == null) return "Gagal membuka perangkat USB untuk membaca descriptor.";
             byte[] raw = connection.getRawDescriptors();
-            return UsbAudioDescriptorParser.parse(raw);
+            StringBuilder report = new StringBuilder(UsbAudioDescriptorParser.parse(raw));
+            java.util.List<UsbAudioDescriptorParser.ClockSource> clocks =
+                UsbAudioDescriptorParser.findReadableClockSources(raw);
+            if (!clocks.isEmpty()) {
+                report.append("\\n\\n=== UAC2 CLOCK FREQUENCY (READ ONLY) ===");
+                for (UsbAudioDescriptorParser.ClockSource clock : clocks) {
+                    report.append("\\nClock Source ID=").append(clock.entityId)
+                        .append(", AC interface=").append(clock.interfaceNumber);
+                    readClockFrequency(connection, clock, report);
+                }
+            }
+            return report.toString();
         } catch (RuntimeException error) {
             return "Gagal membaca raw USB descriptor: " + error.getClass().getSimpleName()
                 + ": " + String.valueOf(error.getMessage());
@@ -39,6 +50,66 @@ final class UsbHostInspector {
                 try { connection.close(); } catch (RuntimeException ignored) { }
             }
         }
+    }
+
+    /**
+     * Reads UAC2 clock frequency GET_RANGE/GET_CUR only. No SET request is ever sent.
+     * A bounded range buffer prevents malformed devices from causing unbounded allocation.
+     */
+    private static void readClockFrequency(UsbDeviceConnection connection,
+            UsbAudioDescriptorParser.ClockSource clock, StringBuilder out) {
+        final int maxRanges = 32;
+        final int requestType = 0xA1; // Device-to-host, class, interface
+        final int getCur = 0x81;
+        final int getRange = 0x82;
+        final int samplingFrequencyControl = 0x01;
+        final int value = samplingFrequencyControl << 8;
+        final int index = (clock.entityId << 8) | (clock.interfaceNumber & 0xff);
+
+        byte[] current = new byte[4];
+        int currentLength = connection.controlTransfer(requestType, getCur, value, index,
+            current, current.length, 1000);
+        if (currentLength == 4) {
+            out.append("\\n  Current clock: ").append(readU32(current, 0)).append(" Hz");
+        } else {
+            out.append("\\n  GET_CUR tidak didukung/gagal (result=").append(currentLength).append(')');
+        }
+
+        byte[] range = new byte[2 + (maxRanges * 12)];
+        int transferred = connection.controlTransfer(requestType, getRange, value, index,
+            range, range.length, 1500);
+        if (transferred < 2) {
+            out.append("\\n  GET_RANGE tidak didukung/gagal (result=").append(transferred).append(')');
+            return;
+        }
+        int declaredRanges = readU16(range, 0);
+        int availableRanges = Math.min(declaredRanges, Math.max(0, (transferred - 2) / 12));
+        out.append("\\n  GET_RANGE: ").append(declaredRanges).append(" subrange(s)");
+        for (int i = 0; i < availableRanges; i++) {
+            int base = 2 + (i * 12);
+            long min = readU32(range, base);
+            long max = readU32(range, base + 4);
+            long resolution = readU32(range, base + 8);
+            out.append("\\n    ").append(min);
+            if (max != min) out.append("..").append(max);
+            out.append(" Hz");
+            if (resolution != 0) out.append(" (step ").append(resolution).append(" Hz)");
+        }
+        if (declaredRanges > availableRanges) {
+            out.append("\\n  Range list truncated/unavailable: parsed ")
+                .append(availableRanges).append(" of ").append(declaredRanges);
+        }
+    }
+
+    private static int readU16(byte[] bytes, int offset) {
+        return (bytes[offset] & 0xff) | ((bytes[offset + 1] & 0xff) << 8);
+    }
+
+    private static long readU32(byte[] bytes, int offset) {
+        return ((long) bytes[offset] & 0xffL)
+            | (((long) bytes[offset + 1] & 0xffL) << 8)
+            | (((long) bytes[offset + 2] & 0xffL) << 16)
+            | (((long) bytes[offset + 3] & 0xffL) << 24);
     }
 
     static String inspect(UsbManager manager) {
