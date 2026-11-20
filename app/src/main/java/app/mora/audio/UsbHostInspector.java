@@ -9,6 +9,17 @@ import java.util.Map;
 
 /** Read-only USB descriptor inspection. Does not claim endpoint ownership or stream audio. */
 final class UsbHostInspector {
+    static UsbDevice findAudioStreamingDevice(UsbManager manager) {
+        if (manager == null) return null;
+        for (UsbDevice device : manager.getDeviceList().values()) {
+            for (int i = 0; i < device.getInterfaceCount(); i++) {
+                UsbInterface intf = device.getInterface(i);
+                if (intf.getInterfaceClass() == 1 && intf.getInterfaceSubclass() == 2) return device;
+            }
+        }
+        return null;
+    }
+
     static String inspect(UsbManager manager) {
         if (manager == null) return "USB Host tidak tersedia pada perangkat ini.";
         Map<String, UsbDevice> devices = manager.getDeviceList();
