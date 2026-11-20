@@ -43,13 +43,13 @@ import java.util.concurrent.Executors;
 
 /** Mora Audio: a root app that drives the Mora Audio Suite module (same scripts the module WebUI uses). */
 public class MainActivity extends Activity {
-    private static final int BG = 0xFF0B0F14;
-    private static final int CARD = 0xFF141A22;
-    private static final int CARD2 = 0xFF1B232D;
-    private static final int TEXT = 0xFFEAF0F6;
-    private static final int MUTED = 0xFF8794A3;
-    private static final int ACCENT = 0xFF3DD6C6;
-    private static final int ACCENT2 = 0xFF7C9CFF;
+    private static final int BG = 0xFF0D1117;
+    private static final int CARD = 0xFF171E28;
+    private static final int CARD2 = 0xFF222C38;
+    private static final int TEXT = 0xFFE4E9F2;
+    private static final int MUTED = 0xFFA8B2C2;
+    private static final int ACCENT = 0xFF9ADFD6;
+    private static final int ACCENT2 = 0xFFB5C7FF;
     private static final int BAD = 0xFFFF6B6B;
     private static final int OK = 0xFF5BD68A;
     private static final int WARN = 0xFFFFC857;
@@ -121,7 +121,13 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().setStatusBarColor(BG);
-        getWindow().setNavigationBarColor(CARD);
+        getWindow().setNavigationBarColor(BG);
+        getWindow().getDecorView().setSystemUiVisibility(0);
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            getWindow().setNavigationBarDividerColor(0xFF293341);
+            getWindow().setStatusBarContrastEnforced(false);
+            getWindow().setNavigationBarContrastEnforced(false);
+        }
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -201,7 +207,8 @@ public class MainActivity extends Activity {
         hero.setPadding(dp(20), dp(20), dp(20), dp(20));
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF12453F, 0xFF1B2A5E});
         g.setCornerRadius(dp(24));
-        hero.setBackground(g);
+        hero.setBackground(glassSurface(0xFF203A4B, 0x669ADFD6, true));
+        hero.setElevation(dp(3));
         LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         hlp.setMargins(0, dp(16), 0, 0);
         hero.setLayoutParams(hlp);
@@ -361,7 +368,8 @@ public class MainActivity extends Activity {
     private View buildTabBar() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackgroundColor(CARD);
+        bar.setBackground(glassSurface(0xF21A222D, 0x332FFFFFF, false));
+        bar.setElevation(dp(12));
         for (int i = 0; i < 4; i++) {
             final int idx = i;
             LinearLayout cell = new LinearLayout(this);
@@ -372,6 +380,7 @@ public class MainActivity extends Activity {
             gd.setColor(ACCENT);
             gd.setCornerRadius(dp(2));
             ind.setBackground(gd);
+            ind.setElevation(dp(2));
             cell.addView(ind, new LinearLayout.LayoutParams(dp(28), dp(3)));
             TextView t = label(TAB_NAMES[i], 13, MUTED, true);
             t.setGravity(Gravity.CENTER);
@@ -393,6 +402,17 @@ public class MainActivity extends Activity {
     }
 
     // ------------------------------------------------------------------ widgets
+    /** Soft translucent tonal surface: a restrained glass treatment without runtime blur cost. */
+    private GradientDrawable glassSurface(int color, int stroke, boolean heroSurface) {
+        int top = heroSurface ? 0xE62A5960 : (color | 0x08000000);
+        int bottom = heroSurface ? 0xE622304F : color;
+        GradientDrawable drawable = new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR, new int[]{top, bottom});
+        drawable.setCornerRadius(dp(heroSurface ? 26 : 24));
+        drawable.setStroke(dp(1), stroke);
+        return drawable;
+    }
+
     private TextView label(String s, int sp, int color, boolean bold) {
         TextView t = new TextView(this);
         t.setText(s);
@@ -414,8 +434,10 @@ public class MainActivity extends Activity {
         c.setPadding(dp(16), dp(10), dp(16), dp(10));
         GradientDrawable g = new GradientDrawable();
         g.setColor(CARD);
-        g.setCornerRadius(dp(20));
-        c.setBackground(g);
+        g.setCornerRadius(dp(24));
+        g.setStroke(dp(1), 0x332F4052);
+        c.setBackground(glassSurface(CARD, 0x332F4052, false));
+        c.setElevation(dp(1));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, dp(6), 0, 0);
         c.setLayoutParams(lp);
@@ -427,8 +449,12 @@ public class MainActivity extends Activity {
         b.setGravity(Gravity.CENTER);
         GradientDrawable g = new GradientDrawable();
         g.setColor(primary ? ACCENT : CARD2);
-        g.setCornerRadius(dp(14));
-        b.setBackground(g);
+        g.setCornerRadius(dp(18));
+        g.setStroke(dp(1), primary ? 0x669ADFD6 : 0x443C4A5D);
+        android.graphics.drawable.RippleDrawable ripple = new android.graphics.drawable.RippleDrawable(
+            ColorStateList.valueOf(0x44FFFFFF), g, null);
+        b.setBackground(ripple);
+        b.setElevation(primary ? dp(2) : 0);
         b.setClickable(true);
         return b;
     }
@@ -438,8 +464,10 @@ public class MainActivity extends Activity {
         r.setPadding(dp(16), dp(14), dp(16), dp(14));
         GradientDrawable g = new GradientDrawable();
         g.setColor(CARD);
-        g.setCornerRadius(dp(18));
-        r.setBackground(g);
+        g.setCornerRadius(dp(22));
+        g.setStroke(dp(1), 0x332F4052);
+        r.setBackground(glassSurface(CARD, 0x332F4052, false));
+        r.setElevation(dp(1));
         r.addView(label(title, 15, TEXT, true));
         r.addView(label(sub, 12, MUTED, false));
         r.setOnClickListener(l);
@@ -464,9 +492,9 @@ public class MainActivity extends Activity {
 
     private void styleMode(LinearLayout m, boolean active) {
         GradientDrawable g = new GradientDrawable();
-        g.setColor(active ? 0xFF123B37 : CARD);
-        g.setCornerRadius(dp(18));
-        g.setStroke(dp(active ? 2 : 1), active ? ACCENT : CARD2);
+        g.setColor(active ? 0xFF203A42 : CARD);
+        g.setCornerRadius(dp(22));
+        g.setStroke(dp(active ? 2 : 1), active ? ACCENT : 0x443C4A5D);
         m.setBackground(g);
     }
 
