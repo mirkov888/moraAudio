@@ -149,6 +149,50 @@ final class UsbAudioDescriptorParser {
         return out.toString();
     }
 
+    static final class ClockSource {
+        final int entityId;
+        final int interfaceNumber;
+        final int controlAccess;
+        ClockSource(int entityId, int interfaceNumber, int controlAccess) {
+            this.entityId = entityId;
+            this.interfaceNumber = interfaceNumber;
+            this.controlAccess = controlAccess;
+        }
+    }
+
+    /** Returns UAC2 clock sources whose frequency control advertises host-readable access. */
+    static java.util.List<ClockSource> findReadableClockSources(byte[] raw) {
+        java.util.List<ClockSource> result = new java.util.ArrayList<>();
+        if (raw == null) return result;
+        int offset = 0;
+        int interfaceNumber = -1;
+        int interfaceClass = -1;
+        int interfaceSubclass = -1;
+        int protocol = -1;
+        while (offset + 2 <= raw.length) {
+            int length = u8(raw, offset);
+            int type = u8(raw, offset + 1);
+            if (length < 2 || offset + length > raw.length) break;
+            if (type == DESC_INTERFACE && length >= 9) {
+                interfaceNumber = u8(raw, offset + 2);
+                interfaceClass = u8(raw, offset + 5);
+                interfaceSubclass = u8(raw, offset + 6);
+                protocol = u8(raw, offset + 7);
+            } else if (type == DESC_CS_INTERFACE && interfaceClass == 1
+                    && interfaceSubclass == 1 && protocol == 0x20
+                    && length >= 8 && u8(raw, offset + 2) == 0x0A) {
+                int entityId = u8(raw, offset + 3);
+                int access = u8(raw, offset + 5) & 0x03;
+                // 01 = read-only, 11 = read/write. Never issue SET requests here.
+                if (entityId != 0 && (access == 1 || access == 3)) {
+                    result.add(new ClockSource(entityId, interfaceNumber, access));
+                }
+            }
+            offset += length;
+        }
+        return result;
+    }
+
     private static int u8(byte[] b, int p) { return b[p] & 0xff; }
     private static int u16(byte[] b, int p) { return u8(b, p) | (u8(b, p + 1) << 8); }
     private static int u24(byte[] b, int p) { return u8(b, p) | (u8(b, p + 1) << 8) | (u8(b, p + 2) << 16); }
