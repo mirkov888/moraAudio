@@ -88,7 +88,9 @@ final class UsbAudioDescriptorParser {
                         if (channels > 0) out.append(", channels=").append(channels);
                         out.append("\n  Sample rate: tidak tercantum pada descriptor format UAC2;")
                             .append(" perlu query clock entity/control range.\n");
-                    } else if (currentProtocol == 0x30) {\n                        out.append("  UAC3 format descriptor: detail parsing belum didukung.\\n");\n                    } else if (formatType == 1 && length >= 8) {
+                    } else if (currentProtocol == 0x30) {
+                        out.append("  UAC3 format descriptor: detail parsing belum didukung.\n");
+                    } else if (formatType == 1 && length >= 8) {
                         channels = u8(raw, offset + 4);
                         subslot = u8(raw, offset + 5);
                         bitResolution = u8(raw, offset + 6);
