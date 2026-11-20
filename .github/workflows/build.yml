@@ -73,19 +73,38 @@ jobs:
           test -f app/build.gradle
           test -f app/src/main/AndroidManifest.xml
           echo "Project structure OK" | tee build-diagnostics.txt
-      - name: Build debug APK with full diagnostics
+      - name: Build installable APK
+        env:
+          MORA_KEYSTORE_BASE64: ${{ secrets.MORA_KEYSTORE_BASE64 }}
+          MORA_KEYSTORE_PASSWORD: ${{ secrets.MORA_KEYSTORE_PASSWORD }}
+          MORA_KEY_ALIAS: ${{ secrets.MORA_KEY_ALIAS }}
+          MORA_KEY_PASSWORD: ${{ secrets.MORA_KEY_PASSWORD }}
+          MORA_VERSION_CODE: ${{ github.run_number }}
         run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          if [ -n "$MORA_KEYSTORE_BASE64" ] && [ -n "$MORA_KEYSTORE_PASSWORD" ] && [ -n "$MORA_KEY_ALIAS" ] && [ -n "$MORA_KEY_PASSWORD" ]; then
+            echo "$MORA_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/mora-audio-release.jks"
+            export MORA_KEYSTORE_PATH="$RUNNER_TEMP/mora-audio-release.jks"
+            echo "Signing mode: persistent release key" | tee build-diagnostics.txt
+            BUILD_TASK=assembleRelease
+            APK="app/build/outputs/apk/release/app-release.apk"
+          else
+            echo "::warning::Persistent signing secrets are not configured. Debug APK may not update an existing install."
+            echo "Signing mode: temporary CI debug key (not upgrade-stable)" | tee build-diagnostics.txt
+            BUILD_TASK=assembleDebug
+            APK="app/build/outputs/apk/debug/app-debug.apk"
+          fi
           set -o pipefail
-          gradle --no-daemon --stacktrace --info clean assembleDebug 2>&1 | tee build.log
+          gradle --no-daemon --stacktrace --info clean "$BUILD_TASK" 2>&1 | tee build.log
+          test -s "$APK"
+          cp "$APK" artifacts/MoraAudio.apk
       - name: Verify and stage APK
         if: success()
         run: |
           set -euo pipefail
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
-          mkdir -p artifacts
-          cp "$APK" artifacts/MoraAudio-debug.apk
-          sha256sum artifacts/MoraAudio-debug.apk | tee -a build-diagnostics.txt
+          test -s artifacts/MoraAudio.apk
+          sha256sum artifacts/MoraAudio.apk | tee -a build-diagnostics.txt
       - name: Write failure summary
         if: failure()
         run: |
@@ -103,8 +122,8 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: MoraAudio-debug-apk
-          path: artifacts/MoraAudio-debug.apk
+          name: MoraAudio-apk
+          path: artifacts/MoraAudio.apk
           if-no-files-found: error
           retention-days: 30
       - name: Upload build logs and diagnostics (including failures)
@@ -122,4 +141,4 @@ jobs:
         if: success() && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/MoraAudio-debug.apk
+          files: artifacts/MoraAudio.apk
