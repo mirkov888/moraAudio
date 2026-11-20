@@ -422,6 +422,7 @@ public class MainActivity extends Activity {
         c.addView(action("Pantau suhu dan baterai", "Baca monitor bawaan modul", v -> showModuleMonitor()));
         c.addView(section("USB DAC / UAC"));
         c.addView(action("Periksa perangkat USB", "Baca descriptor USB dan deteksi interface AudioStreaming", v -> showUsbHostReport()));
+        c.addView(action("Uji kepemilikan interface", "Claim interface dan uji alternate setting; tanpa transfer audio", v -> probeUsbAudioInterface()));
         c.addView(section("Cadangan pengaturan"));
         c.addView(action("Ekspor cadangan", "Simpan konfigurasi ke Download/mora_backup.tar.gz", v -> exportModuleBackup()));
         c.addView(section("Log"));
@@ -1131,6 +1132,40 @@ public class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
         PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, permissionIntent, flags);
         manager.requestPermission(device, pendingIntent);
+    }
+
+    /** Explicit hardware probe: briefly claims UAC alt 0, tests advertised alt settings, then releases. */
+    private void probeUsbAudioInterface() {
+        showTab(3);
+        UsbManager manager = (UsbManager) getSystemService(USB_SERVICE);
+        if (manager == null) {
+            logView.setText("USB Host tidak tersedia.");
+            return;
+        }
+        UsbDevice device = UsbHostInspector.findAudioStreamingDevice(manager);
+        if (device == null) {
+            logView.setText("Tidak ditemukan perangkat USB AudioStreaming.");
+            return;
+        }
+        if (!manager.hasPermission(device)) {
+            logView.setText("Izin USB belum tersedia. Jalankan Periksa perangkat USB terlebih dahulu.");
+            return;
+        }
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("Uji kepemilikan interface USB?")
+            .setMessage("Mora Audio akan mencoba claim interface AudioStreaming, berpindah alternate setting, memulihkan alt 0, lalu melepas interface. Tidak ada PCM yang dikirim. Audio dari aplikasi lain mungkin terputus sebentar. Lanjutkan?")
+            .setNegativeButton("Batal", null)
+            .setPositiveButton("Uji", (dialog, which) -> {
+                logView.setText("Menjalankan probe interface USB...");
+                io.execute(() -> {
+                    String result = UsbAudioInterfaceProbe.probe(manager, device);
+                    ui.post(() -> {
+                        if (logView != null) logView.setText(result);
+                        toast("Probe interface selesai");
+                    });
+                });
+            })
+            .show();
     }
 
     private void exportModuleBackup() {
