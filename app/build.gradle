@@ -19,4 +19,8 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 }
-// no dependencies on purpose: the app only uses the platform widgets and talks to the module through root
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
+
+// Runtime has no third-party dependencies; JUnit is used only for local parser tests.
