@@ -14,6 +14,14 @@ ViPER driver status, BassBoost, selected audio tuning switches, and diagnostic a
 Without the module, the app can open but module-dependent controls will report that the module is unavailable.
 The app does not request network access and does not currently connect to Mora Shield.
 
+## UI
+
+App version 2.2.0 adopts a Material 3 dark theme with a restrained liquid-glass treatment:
+an animated aurora backdrop, translucent glass cards, a floating icon navigation bar,
+Material switches, sliders, and buttons. The aurora animation pauses when the app is not
+visible and respects the system animation setting. Glass surfaces are drawn locally;
+they do not use expensive live background blur.
+
 ## Build
 
 The project uses Android Gradle Plugin 8.5.2, Gradle 8.7, Java 17, and compileSdk 34.
