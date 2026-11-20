@@ -33,6 +33,15 @@ impl PcmFormat {
             Self::Pcm32 | Self::Float32 => 32,
         }
     }
+
+    /// Storage width of one interleaved PCM sample, in bytes.
+    pub const fn bytes_per_sample(self) -> u8 {
+        match self {
+            Self::Pcm16 => 2,
+            Self::Pcm24Packed => 3,
+            Self::Pcm32 | Self::Float32 => 4,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,6 +83,43 @@ pub struct PcmRequest {
     pub format: PcmFormat,
     pub channels: u8,
 }
+
+impl PcmRequest {
+    /// Validate the stream parameters and return bytes in one interleaved PCM frame.
+    pub fn frame_bytes(&self) -> Result<usize, PcmRequestError> {
+        if self.sample_rate_hz == 0 {
+            return Err(PcmRequestError::InvalidSampleRate);
+        }
+        if self.channels == 0 {
+            return Err(PcmRequestError::InvalidChannelCount);
+        }
+        Ok(usize::from(self.format.bytes_per_sample()) * usize::from(self.channels))
+    }
+
+    /// Return the uncompressed PCM payload rate, excluding USB/protocol overhead.
+    pub fn bytes_per_second(&self) -> Result<u64, PcmRequestError> {
+        let frame_bytes = u64::try_from(self.frame_bytes()?)
+            .map_err(|_| PcmRequestError::ArithmeticOverflow)?;
+        u64::from(self.sample_rate_hz)
+            .checked_mul(frame_bytes)
+            .ok_or(PcmRequestError::ArithmeticOverflow)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PcmRequestError {
+    InvalidSampleRate,
+    InvalidChannelCount,
+    ArithmeticOverflow,
+}
+
+impl fmt::Display for PcmRequestError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl std::error::Error for PcmRequestError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CapabilityError {
@@ -243,6 +289,29 @@ mod tests {
             channel_counts: [2].into_iter().collect(),
         };
         assert_eq!(empty.validate(), Err(CapabilityError::NoSampleRates));
+    }
+
+    #[test]
+    fn pcm_frame_width_uses_packed_24_bit_storage() {
+        let request = PcmRequest { sample_rate_hz: 48_000, format: PcmFormat::Pcm24Packed, channels: 2 };
+        assert_eq!(request.frame_bytes(), Ok(6));
+        assert_eq!(request.bytes_per_second(), Ok(288_000));
+    }
+
+    #[test]
+    fn pcm_payload_rate_handles_common_formats() {
+        let pcm16 = PcmRequest { sample_rate_hz: 44_100, format: PcmFormat::Pcm16, channels: 2 };
+        let pcm32 = PcmRequest { sample_rate_hz: 96_000, format: PcmFormat::Float32, channels: 2 };
+        assert_eq!(pcm16.bytes_per_second(), Ok(176_400));
+        assert_eq!(pcm32.bytes_per_second(), Ok(768_000));
+    }
+
+    #[test]
+    fn pcm_request_rejects_zero_rate_and_channels() {
+        let zero_rate = PcmRequest { sample_rate_hz: 0, ..request() };
+        let zero_channels = PcmRequest { channels: 0, ..request() };
+        assert_eq!(zero_rate.frame_bytes(), Err(PcmRequestError::InvalidSampleRate));
+        assert_eq!(zero_channels.frame_bytes(), Err(PcmRequestError::InvalidChannelCount));
     }
 
     #[test]
