@@ -404,8 +404,8 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ widgets
     /** Soft translucent tonal surface: a restrained glass treatment without runtime blur cost. */
     private GradientDrawable glassSurface(int color, int stroke, boolean heroSurface) {
-        int top = heroSurface ? 0xE62A5960 : (color | 0x08000000);
-        int bottom = heroSurface ? 0xE622304F : color;
+        int top = heroSurface ? 0xE62A5960 : ((color & 0x00FFFFFF) | 0xF2000000);
+        int bottom = heroSurface ? 0xE622304F : ((color & 0x00FFFFFF) | 0xFA000000);
         GradientDrawable drawable = new GradientDrawable(
             GradientDrawable.Orientation.TL_BR, new int[]{top, bottom});
         drawable.setCornerRadius(dp(heroSurface ? 26 : 24));
