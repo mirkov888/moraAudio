@@ -23,7 +23,7 @@ final class UsbAudioInterfaceProbe {
     static String probe(UsbManager manager, UsbDevice device) {
         long startedAt = android.os.SystemClock.elapsedRealtime();
         String result = probeInternal(manager, device);
-        return result + "\\nDurasi probe: "
+        return result + "\nDurasi probe: "
             + (android.os.SystemClock.elapsedRealtime() - startedAt) + " ms";
     }
 
