@@ -125,7 +125,7 @@ public class MainActivity extends Activity {
                         + UsbHostInspector.inspectRawDescriptors(manager, device != null ? device : audioDevice)
                     : "Izin USB ditolak untuk " + name + ". Sambungkan ulang DAC atau izinkan akses saat diminta.";
                 lastUsbTestReport = result;
-                if (logView != null) logView.setText(result);
+                if (logView != null) logView.setText(probeResult);
                 toast(granted ? "Izin USB diberikan" : "Izin USB ditolak");
             } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)
                     || UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
@@ -427,7 +427,7 @@ public class MainActivity extends Activity {
         c.addView(action("Pantau suhu dan baterai", "Baca monitor bawaan modul", v -> showModuleMonitor()));
         c.addView(section("USB DAC / UAC"));
         c.addView(action("Periksa perangkat USB", "Baca descriptor USB dan deteksi interface AudioStreaming", v -> showUsbHostReport()));
-        c.addView(action("Uji kepemilikan interface", "Claim interface dan uji alternate setting; tanpa transfer audio", v -> probeUsbAudioInterface()));
+        c.addView(action("Uji kepemilikan interface", "Periksa kepemilikan interface USB; tanpa mengubah routing audio", v -> probeUsbAudioInterface()));
         c.addView(action("Simpan hasil pengujian (.txt)", "Ekspor scan USB dan hasil probe menjadi satu file teks", v -> saveUsbTestReport()));
         c.addView(section("Cadangan pengaturan"));
         c.addView(action("Ekspor cadangan", "Simpan konfigurasi ke Download/mora_backup.tar.gz", v -> exportModuleBackup()));
@@ -1161,22 +1161,55 @@ public class MainActivity extends Activity {
         }
         new android.app.AlertDialog.Builder(this)
             .setTitle("Uji kepemilikan interface USB?")
-            .setMessage("Mora Audio akan mencoba claim interface AudioStreaming, berpindah alternate setting, memulihkan alt 0, lalu melepas interface. Tidak ada PCM yang dikirim. Audio dari aplikasi lain mungkin terputus sebentar. Lanjutkan?")
+            .setMessage("Mora Audio akan mencoba claim interface AudioStreaming dengan force=false. Tidak mengubah alternate setting dan tidak mengirim PCM. Jika claim ditolak, aplikasi akan mengumpulkan diagnostik read-only dari sysfs dan layanan audio untuk mencari tahu apakah driver/kernel atau Audio HAL sedang memegang interface. Lanjutkan?")
             .setNegativeButton("Batal", null)
             .setPositiveButton("Uji", (dialog, which) -> {
                 logView.setText("Menjalankan probe interface USB...");
                 io.execute(() -> {
                     String result = UsbAudioInterfaceProbe.probe(manager, device);
+                    if (result.contains("GAGAL (false)")) {
+                        Root.Result ownership = Root.run(buildUsbOwnershipDiagnosticCommand(device));
+                        result += "\n\n=== READ-ONLY USB OWNERSHIP DIAGNOSTICS ===\n"
+                            + (ownership.out == null || ownership.out.isEmpty()
+                                ? "Diagnostik root tidak tersedia (exit=" + ownership.code + ")."
+                                : ownership.out);
+                    }
+                    final String probeResult = result;
                     ui.post(() -> {
                         lastUsbTestReport = "=== MORA AUDIO USB TEST REPORT ===\n\n"
                             + (lastUsbTestReport.isEmpty() ? "Scan descriptor belum disimpan pada sesi ini.\n\n" : lastUsbTestReport + "\n\n")
-                            + "=== USB INTERFACE OWNERSHIP PROBE ===\n" + result;
+                            + "=== USB INTERFACE OWNERSHIP PROBE ===\n" + probeResult;
                         if (logView != null) logView.setText(result);
                         toast("Probe interface selesai");
                     });
                 });
             })
             .show();
+    }
+
+    /** Builds a read-only root diagnostic for the selected USB VID/PID. */
+    private String buildUsbOwnershipDiagnosticCommand(UsbDevice device) {
+        String vid = String.format(java.util.Locale.ROOT, "%04x", device.getVendorId());
+        String pid = String.format(java.util.Locale.ROOT, "%04x", device.getProductId());
+        return "echo 'USB sysfs driver bindings (read-only)'; found=0; "
+            + "for dev in /sys/bus/usb/devices/*; do "
+            + "[ -r \"$dev/idVendor\" ] || continue; "
+            + "v=$(cat \"$dev/idVendor\" 2>/dev/null); "
+            + "p=$(cat \"$dev/idProduct\" 2>/dev/null); "
+            + "[ \"$v\" = '" + vid + "' ] && [ \"$p\" = '" + pid + "' ] || continue; "
+            + "found=1; echo \"device=$dev vid=$v pid=$p\"; "
+            + "for intf in \"$dev\":*; do [ -d \"$intf\" ] || continue; "
+            + "echo \"interface=$intf\"; "
+            + "if [ -L \"$intf/driver\" ]; then "
+            + "echo \"driver=$(readlink -f \"$intf/driver\" 2>/dev/null)\"; "
+            + "else echo 'driver=unbound-or-not-exposed'; fi; done; done; "
+            + "[ \"$found\" = 1 ] || echo 'Matching USB device not found in sysfs'; "
+            + "echo; echo 'USB service snapshot (filtered)'; "
+            + "dumpsys usb 2>/dev/null | grep -i -E -C 2 '"
+            + vid + "|" + pid + "|audio|device' | head -n 80; "
+            + "echo; echo 'AudioFlinger USB snapshot (filtered)'; "
+            + "dumpsys media.audio_flinger 2>/dev/null | grep -i -E -C 2 'usb|"
+            + vid + "|" + pid + "' | head -n 80";
     }
 
     /** Opens Android's document picker so the user can save a plain-text USB test report. */
