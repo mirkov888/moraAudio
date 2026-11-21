@@ -228,19 +228,9 @@ final class UsbAudioDescriptorParser {
         if (raw == null || raw.length == 0) return result;
         java.util.Map<Integer, ClockEntity> entities = parseClockEntities(raw);
         java.util.Map<Integer, ClockEntity> pending = new java.util.LinkedHashMap<>();
-        int offset = 0, cls = -1, sub = -1, protocol = -1;
-        while (offset + 2 <= raw.length) {
-            int length = u8(raw, offset), type = u8(raw, offset + 1);
-            if (length < 2 || offset + length > raw.length) break;
-            if (type == DESC_INTERFACE && length >= 9) {
-                cls = u8(raw, offset + 5); sub = u8(raw, offset + 6);
-                protocol = u8(raw, offset + 7);
-            } else if (type == DESC_CS_INTERFACE && cls == 1 && sub == 2
-                    && protocol == 0x20 && length >= 4 && u8(raw, offset + 2) == 0x01) {
-                collectPendingClockSelectors(u8(raw, offset + 3), entities, selectedPins,
-                    new java.util.HashSet<Integer>(), pending);
-            }
-            offset += length;
+        for (int terminalId : findPlaybackTerminalLinks(raw)) {
+            collectPendingClockSelectors(terminalId, entities, selectedPins,
+                new java.util.HashSet<Integer>(), pending);
         }
         for (ClockEntity entity : pending.values()) {
             result.add(new ClockSelector(entity.id, entity.interfaceNumber,
@@ -348,12 +338,11 @@ final class UsbAudioDescriptorParser {
                     } else if (subtype == 0x0A && length >= 8) {
                         subtypes.put(id, subtype);
                     }
-                } else if (sub == 2 && subtype == 0x01) {
-                    terminalLinks.add(u8(raw, offset + 3));
                 }
             }
             offset += length;
         }
+        terminalLinks.addAll(findPlaybackTerminalLinks(raw));
         java.util.Set<Integer> reachable = new java.util.HashSet<>();
         for (int terminalId : terminalLinks) {
             collectReachableClockSources(terminalId, subtypes, edges,
@@ -391,6 +380,49 @@ final class UsbAudioDescriptorParser {
         }
     }
 
+    /**
+     * Collects terminal links only from UAC2 AudioStreaming alternate settings that advertise
+     * an isochronous OUT endpoint. This excludes capture-only IN paths from playback clock
+     * selection. Descriptor-only synthetic fixtures without endpoint descriptors are retained
+     * for backward-compatible parser unit tests; real USB configurations expose endpoints.
+     */
+    private static java.util.List<Integer> findPlaybackTerminalLinks(byte[] raw) {
+        java.util.Set<Integer> links = new java.util.LinkedHashSet<>();
+        if (raw == null || raw.length == 0) return new java.util.ArrayList<>(links);
+        int offset = 0;
+        boolean streaming = false;
+        int terminalLink = -1;
+        boolean sawEndpoint = false;
+        boolean hasIsoOut = false;
+        while (offset + 2 <= raw.length) {
+            int length = u8(raw, offset), type = u8(raw, offset + 1);
+            if (length < 2 || offset + length > raw.length) break;
+            if (type == DESC_INTERFACE && length >= 9) {
+                if (streaming && terminalLink > 0 && (!sawEndpoint || hasIsoOut)) {
+                    links.add(terminalLink);
+                }
+                streaming = u8(raw, offset + 5) == 1
+                    && u8(raw, offset + 6) == 2 && u8(raw, offset + 7) == 0x20;
+                terminalLink = -1;
+                sawEndpoint = false;
+                hasIsoOut = false;
+            } else if (streaming && type == DESC_CS_INTERFACE && length >= 4
+                    && u8(raw, offset + 2) == 0x01) {
+                terminalLink = u8(raw, offset + 3);
+            } else if (streaming && type == DESC_ENDPOINT && length >= 7) {
+                sawEndpoint = true;
+                int address = u8(raw, offset + 2);
+                int transferType = u8(raw, offset + 3) & 0x03;
+                if ((address & 0x80) == 0 && transferType == 1) hasIsoOut = true;
+            }
+            offset += length;
+        }
+        if (streaming && terminalLink > 0 && (!sawEndpoint || hasIsoOut)) {
+            links.add(terminalLink);
+        }
+        return new java.util.ArrayList<>(links);
+    }
+
     /** Resolves clock references from AS terminalLink; selector branches remain explicitly ambiguous. */
     static String describeClockTopology(byte[] raw) {
         if (raw == null || raw.length == 0) return "UAC2 clock topology: descriptor kosong.";
@@ -424,12 +456,11 @@ final class UsbAudioDescriptorParser {
                     } else if (subtype==0x03 && length>=9) {
                         entities.put(id,new ClockEntity(id,subtype,intf,0,new int[]{u8(raw,offset+8)}));
                     }
-                } else if (sub==2 && subtype==0x01) {
-                    terminals.add(u8(raw,offset+3));
                 }
             }
             offset+=length;
         }
+        terminals.addAll(findPlaybackTerminalLinks(raw));
         if(terminals.isEmpty()) return "UAC2 clock topology: AudioStreaming terminalLink tidak ditemukan.";
         StringBuilder out=new StringBuilder("=== UAC2 CLOCK ENTITY TOPOLOGY ===");
         for(int terminalId:terminals) {
