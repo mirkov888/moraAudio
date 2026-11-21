@@ -129,7 +129,7 @@ final class UsbAudioInterfaceProbe {
                     .append("Interpretasi: claim ditolak; API Android tidak memberi alasan spesifik. ")
                     .append("Kemungkinan interface sedang dimiliki audio service/HAL, atau penolakan host/driver. ")
                     .append("Hasil ini tidak membuktikan DAC tidak mendukung exclusive playback.\n")
-                    .append("Keselamatan: force=true dan pelepasan driver kernel sengaja tidak digunakan.\\n");
+                    .append("Keselamatan: force=true dan pelepasan driver kernel sengaja tidak digunakan.\n");
                 appendReadOnlyOwnerDiagnostics(report, device);
                 return report.toString();
             }
@@ -182,12 +182,12 @@ final class UsbAudioInterfaceProbe {
     private static void appendRootCommandOutput(StringBuilder report, String bus, String address) {
         StringBuilder script = new StringBuilder("echo sysfs_USB_interface_drivers; ");
         if (bus != null && address != null) {
-            script.append("target=; for d in /sys/bus/usb/devices/*; do ")
+            script.append("target=none; for d in /sys/bus/usb/devices/*; do ")
                 .append("[ -f $d/busnum ] || continue; [ -f $d/devnum ] || continue; ")
                 .append("b=$(cat $d/busnum 2>/dev/null); n=$(cat $d/devnum 2>/dev/null); ")
                 .append("[ $b = ").append(bus).append(" ] || continue; ")
                 .append("[ $n = ").append(address).append(" ] || continue; target=$d; break; done; ")
-                .append("if [ -z $target ]; then echo device_not_found_in_sysfs; else ")
+                .append("if [ $target = none ]; then echo device_not_found_in_sysfs; else ")
                 .append("echo USB_sysfs:$target; for i in $target:1.*; do [ -d $i ] || continue; ")
                 .append("cls=$(cat $i/bInterfaceClass 2>/dev/null); sub=$(cat $i/bInterfaceSubClass 2>/dev/null); ")
                 .append("num=$(cat $i/bInterfaceNumber 2>/dev/null); alt=$(cat $i/bAlternateSetting 2>/dev/null); ")
