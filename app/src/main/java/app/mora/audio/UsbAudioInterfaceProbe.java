@@ -43,10 +43,14 @@ final class UsbAudioInterfaceProbe {
             .append("Interface total: ").append(device.getInterfaceCount()).append('\n');
 
         try {
-            // Identify playback only: AudioStreaming interfaces with an isochronous OUT endpoint.
+            // First collect every AudioStreaming interface. Android commonly enumerates alt 0
+            // before alt 1..N, so determine the playback interface number before grouping;
+            // otherwise alt 0 is accidentally skipped while playbackId is still -1.
+            List<UsbInterface> audioStreamingInterfaces = new ArrayList<>();
             for (int i = 0; i < device.getInterfaceCount(); i++) {
                 UsbInterface candidate = device.getInterface(i);
                 if (candidate.getInterfaceClass() != 1 || candidate.getInterfaceSubclass() != 2) continue;
+                audioStreamingInterfaces.add(candidate);
                 boolean hasIsoOut = false;
                 for (int e = 0; e < candidate.getEndpointCount(); e++) {
                     UsbEndpoint endpoint = candidate.getEndpoint(e);
@@ -56,13 +60,22 @@ final class UsbAudioInterfaceProbe {
                         break;
                     }
                 }
-                if (!hasIsoOut && candidate.getAlternateSetting() != 0) continue;
+                report.append("AS candidate: id=").append(candidate.getId())
+                    .append(", alt=").append(candidate.getAlternateSetting())
+                    .append(", endpoints=").append(candidate.getEndpointCount())
+                    .append(", isochronous OUT=").append(hasIsoOut).append('\\n');
                 if (playbackId == -1 && hasIsoOut) playbackId = candidate.getId();
-                if (candidate.getId() == playbackId) playbackAlternates.add(candidate);
             }
 
-            if (playbackId == -1 || playbackAlternates.isEmpty()) {
+            if (playbackId == -1) {
                 return report.append("Tidak ditemukan interface AudioStreaming playback dengan endpoint isochronous OUT.").toString();
+            }
+            // Second pass includes alt 0 even when it appeared before the first playback alt.
+            for (UsbInterface candidate : audioStreamingInterfaces) {
+                if (candidate.getId() == playbackId) playbackAlternates.add(candidate);
+            }
+            if (playbackAlternates.isEmpty()) {
+                return report.append("Interface playback terdeteksi tetapi alternate setting tidak dapat dikelompokkan.").toString();
             }
             for (UsbInterface candidate : playbackAlternates) {
                 report.append("Playback interface ID=").append(candidate.getId())
