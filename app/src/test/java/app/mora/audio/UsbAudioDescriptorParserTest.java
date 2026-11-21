@@ -61,6 +61,7 @@ public class UsbAudioDescriptorParserTest {
         assertEquals(9, clocks.get(0).entityId);
         assertEquals(2, clocks.get(0).interfaceNumber);
         assertEquals(1, clocks.get(0).controlAccess);
+        assertEquals(1, clocks.get(0).controlBits);
     }
 
     @Test
