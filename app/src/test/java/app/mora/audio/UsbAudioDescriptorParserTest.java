@@ -99,6 +99,33 @@ public class UsbAudioDescriptorParserTest {
     }
 
     @Test
+    public void playbackClockFilteringExcludesCaptureOnlyClockSource() {
+        byte[] raw = new byte[] {
+            9, 4, 0, 0, 0, 1, 1, 0x20, 0,
+            17, 0x24, 0x02, 4, 1, 1, 0, 9, 2, 3, 0, 0, 0, 0, 0, 0, 0,
+            17, 0x24, 0x02, 6, 1, 1, 0, 10, 1, 1, 0, 0, 0, 0, 0, 0, 0,
+            8, 0x24, 0x0A, 9, 1, 1, 0, 0,
+            8, 0x24, 0x0A, 10, 1, 1, 0, 0,
+            9, 4, 1, 1, 1, 1, 2, 0x20, 0,
+            16, 0x24, 0x01, 4, 0, 1, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0,
+            7, 5, 0x01, 0x05, (byte) 0xC0, 0, 1,
+            9, 4, 2, 1, 1, 1, 2, 0x20, 0,
+            16, 0x24, 0x01, 6, 0, 1, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0,
+            7, 5, (byte) 0x81, 0x05, 24, 0, 1
+        };
+
+        List<UsbAudioDescriptorParser.ClockSource> clocks =
+            UsbAudioDescriptorParser.findPlaybackClockSources(raw);
+        assertEquals(1, clocks.size());
+        assertEquals(9, clocks.get(0).entityId);
+
+        String topology = UsbAudioDescriptorParser.describeClockTopology(raw);
+        assertTrue(topology.contains("terminalLink=4"));
+        assertFalse(topology.contains("terminalLink=6"));
+        assertFalse(topology.contains("Clock Source 10"));
+    }
+
+    @Test
     public void playbackClockFilteringSkipsAmbiguousSelector() {
         byte[] raw = new byte[] {
             9, 4, 0, 0, 0, 1, 1, 0x20, 0,
