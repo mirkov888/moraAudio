@@ -79,7 +79,10 @@ final class UsbHostInspector {
                 report.append("\n\n=== UAC2 CLOCK FREQUENCY (READ ONLY) ===");
                 for (UsbAudioDescriptorParser.ClockSource clock : clocks) {
                     report.append("\nClock Source ID=").append(clock.entityId)
-                        .append(", AC interface=").append(clock.interfaceNumber);
+                        .append(", AC interface=").append(clock.interfaceNumber)
+                        .append(", bmControls=0x")
+                        .append(String.format(java.util.Locale.ROOT, "%02X", clock.controlBits))
+                        .append(" (frequency access bits=").append(clock.controlAccess).append(')');
                     readClockFrequency(connection, clock, report);
                 }
             }
@@ -111,17 +114,31 @@ final class UsbHostInspector {
         byte[] current = new byte[4];
         int currentLength = safeControlTransfer(connection, requestType, getCur, value, index,
             current, current.length, 1000);
+        out.append("\n  GET_CUR setup: bmRequestType=0xA1 bRequest=0x81 wValue=0x")
+            .append(String.format(java.util.Locale.ROOT, "%04X", value))
+            .append(" wIndex=0x").append(String.format(java.util.Locale.ROOT, "%04X", index))
+            .append(" wLength=").append(current.length).append(" timeout=1000ms");
         if (currentLength == 4) {
-            out.append("\n  Current clock: ").append(readU32(current, 0)).append(" Hz");
+            out.append("\n  GET_CUR result: ").append(readU32(current, 0)).append(" Hz");
         } else {
-            out.append("\n  GET_CUR tidak didukung/gagal (result=").append(currentLength).append(')');
+            out.append("\n  GET_CUR result=").append(currentLength)
+                .append(currentLength == -2 ? " (exception saat memanggil Android USB API)"
+                    : " (Android tidak menerima transfer data yang valid)");
         }
 
         byte[] range = new byte[2 + (maxRanges * 12)];
         int transferred = safeControlTransfer(connection, requestType, getRange, value, index,
             range, range.length, 1500);
+        out.append("\n  GET_RANGE setup: bmRequestType=0xA1 bRequest=0x82 wValue=0x")
+            .append(String.format(java.util.Locale.ROOT, "%04X", value))
+            .append(" wIndex=0x").append(String.format(java.util.Locale.ROOT, "%04X", index))
+            .append(" wLength=").append(range.length).append(" timeout=1500ms");
         if (transferred < 2) {
-            out.append("\n  GET_RANGE tidak didukung/gagal (result=").append(transferred).append(')');
+            out.append("\n  GET_RANGE result=").append(transferred)
+                .append(transferred == -2 ? " (exception saat memanggil Android USB API)"
+                    : " (Android tidak menerima transfer data yang valid)");
+            out.append("\n  Catatan: Android hanya melaporkan -1 untuk kegagalan transfer; "
+                + "penyebab seperti STALL, timeout, atau penolakan perangkat tidak dapat dibedakan lewat API ini.");
             return;
         }
         int declaredRanges = readU16(range, 0);
@@ -150,7 +167,7 @@ final class UsbHostInspector {
                 buffer, length, timeoutMs);
         } catch (RuntimeException error) {
             // One unsupported/malformed device request must not abort the entire scan.
-            return -1;
+            return -2; // Internal sentinel: Android API itself threw an exception.
         }
     }
 
