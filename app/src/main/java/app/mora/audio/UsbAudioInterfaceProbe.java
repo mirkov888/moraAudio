@@ -63,7 +63,7 @@ final class UsbAudioInterfaceProbe {
                 report.append("AS candidate: id=").append(candidate.getId())
                     .append(", alt=").append(candidate.getAlternateSetting())
                     .append(", endpoints=").append(candidate.getEndpointCount())
-                    .append(", isochronous OUT=").append(hasIsoOut).append('\\n');
+                    .append(", isochronous OUT=").append(hasIsoOut).append('\n');
                 if (playbackId == -1 && hasIsoOut) playbackId = candidate.getId();
             }
 
