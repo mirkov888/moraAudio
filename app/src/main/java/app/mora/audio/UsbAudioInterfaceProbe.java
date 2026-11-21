@@ -21,7 +21,7 @@ final class UsbAudioInterfaceProbe {
     private UsbAudioInterfaceProbe() { }
 
     static String probe(UsbManager manager, UsbDevice device) {
-        StringBuilder report = new StringBuilder("=== USB AUDIO INTERFACE OWNERSHIP PROBE ===\\n");
+        StringBuilder report = new StringBuilder("=== USB AUDIO INTERFACE OWNERSHIP PROBE ===\n");
         if (manager == null || device == null) return report.append("USB manager/perangkat tidak tersedia.").toString();
         if (!manager.hasPermission(device)) return report.append("Izin USB belum tersedia.").toString();
 
@@ -31,11 +31,11 @@ final class UsbAudioInterfaceProbe {
         List<UsbInterface> playbackAlternates = new ArrayList<>();
         long startedAt = android.os.SystemClock.elapsedRealtime();
 
-        report.append("Perangkat: ").append(String.valueOf(device.getProductName())).append('\\n')
+        report.append("Perangkat: ").append(String.valueOf(device.getProductName())).append('\n')
             .append("VID:PID: ").append(String.format(java.util.Locale.ROOT, "%04X:%04X",
-                device.getVendorId(), device.getProductId())).append('\\n')
-            .append("Device name: ").append(device.getDeviceName()).append('\\n')
-            .append("Interface total: ").append(device.getInterfaceCount()).append('\\n');
+                device.getVendorId(), device.getProductId())).append('\n')
+            .append("Device name: ").append(device.getDeviceName()).append('\n')
+            .append("Interface total: ").append(device.getInterfaceCount()).append('\n');
 
         try {
             // Identify playback only: AudioStreaming interfaces with an isochronous OUT endpoint.
@@ -62,7 +62,7 @@ final class UsbAudioInterfaceProbe {
             for (UsbInterface candidate : playbackAlternates) {
                 report.append("Playback interface ID=").append(candidate.getId())
                     .append(", alt=").append(candidate.getAlternateSetting())
-                    .append(", endpoints=").append(candidate.getEndpointCount()).append('\\n');
+                    .append(", endpoints=").append(candidate.getEndpointCount()).append('\n');
                 for (int e = 0; e < candidate.getEndpointCount(); e++) {
                     UsbEndpoint endpoint = candidate.getEndpoint(e);
                     report.append("  endpoint address=0x")
@@ -70,7 +70,7 @@ final class UsbAudioInterfaceProbe {
                         .append(" direction=")
                         .append(endpoint.getDirection() == UsbConstants.USB_DIR_OUT ? "OUT" : "IN")
                         .append(" type=").append(endpoint.getType())
-                        .append(" maxPacket=").append(endpoint.getMaxPacketSize()).append('\\n');
+                        .append(" maxPacket=").append(endpoint.getMaxPacketSize()).append('\n');
                 }
                 if (candidate.getAlternateSetting() == 0) playbackBase = candidate;
             }
@@ -78,45 +78,45 @@ final class UsbAudioInterfaceProbe {
                 return report.append("Playback alt 0 tidak ditemukan; tidak ada perubahan interface dilakukan.").toString();
             }
 
-            report.append("USB permission: OK\\n");
+            report.append("USB permission: OK\n");
             connection = manager.openDevice(device);
             if (connection == null) {
                 return report.append("openDevice: GAGAL (null). Tidak ada claim atau perubahan interface dilakukan.").toString();
             }
-            report.append("openDevice: OK\\n");
+            report.append("openDevice: OK\n");
             int fd = connection.getFileDescriptor();
             report.append("File descriptor: ").append(fd >= 0 ? "valid" : "invalid")
-                .append(" (").append(fd).append(")\\n");
+                .append(" (").append(fd).append(")\n");
             byte[] raw = connection.getRawDescriptors();
             report.append("Raw descriptor dari koneksi: ")
-                .append(raw == null ? "tidak tersedia" : raw.length + " byte").append('\\n');
+                .append(raw == null ? "tidak tersedia" : raw.length + " byte").append('\n');
 
             // This is deliberately non-forcing. Do not retry with force=true on failure.
             boolean claimed;
             try {
                 claimed = connection.claimInterface(playbackBase, false);
                 report.append("claimInterface(playback alt 0, force=false): ")
-                    .append(claimed ? "BERHASIL" : "GAGAL (false)").append('\\n');
+                    .append(claimed ? "BERHASIL" : "GAGAL (false)").append('\n');
             } catch (RuntimeException claimError) {
                 report.append("claimInterface(playback alt 0): EXCEPTION ")
                     .append(claimError.getClass().getSimpleName()).append(": ")
-                    .append(String.valueOf(claimError.getMessage())).append('\\n');
+                    .append(String.valueOf(claimError.getMessage())).append('\n');
                 claimed = false;
             }
 
             if (!claimed) {
-                report.append("SET_INTERFACE: TIDAK dicoba.\\n")
-                    .append("Endpoint transfer: TIDAK dicoba.\\n")
-                    .append("PCM streaming: TIDAK dilakukan.\\n")
+                report.append("SET_INTERFACE: TIDAK dicoba.\n")
+                    .append("Endpoint transfer: TIDAK dicoba.\n")
+                    .append("PCM streaming: TIDAK dilakukan.\n")
                     .append("Interpretasi: claim ditolak; API Android tidak memberi alasan spesifik. ")
                     .append("Kemungkinan interface sedang dimiliki audio service/HAL, atau penolakan host/driver. ")
-                    .append("Hasil ini tidak membuktikan DAC tidak mendukung exclusive playback.\\n")
+                    .append("Hasil ini tidak membuktikan DAC tidak mendukung exclusive playback.\n")
                     .append("Keselamatan: force=true dan pelepasan driver kernel sengaja tidak digunakan.");
                 return report.toString();
             }
 
             report.append("Claim berhasil. Untuk probe diagnostik ini, alt setting tidak diubah ")
-                .append("agar tidak mengganggu routing audio sistem.\\n")
+                .append("agar tidak mengganggu routing audio sistem.\n")
                 .append("releaseInterface: ");
             boolean released = false;
             try {
@@ -127,7 +127,7 @@ final class UsbAudioInterfaceProbe {
             }
             if (released) report.append("OK");
             else if (report.charAt(report.length() - 1) == ' ') report.append("GAGAL/false");
-            report.append('\\n');
+            report.append('\n');
             return report.toString();
         } catch (RuntimeException error) {
             return report.append("Probe exception: ").append(error.getClass().getSimpleName())
