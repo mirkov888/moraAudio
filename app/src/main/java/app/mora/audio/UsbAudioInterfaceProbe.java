@@ -157,15 +157,14 @@ final class UsbAudioInterfaceProbe {
             }
         }
     }
-}
 
     /** Read-only ownership evidence; never writes sysfs or changes USB/audio state. */
     private static void appendReadOnlyOwnerDiagnostics(StringBuilder report, UsbDevice device) {
-        report.append("\\n=== READ-ONLY USB OWNER DIAGNOSTICS ===\\n")
-            .append("Mode: read-only; tidak mengubah driver/interface/routing.\\n");
+        report.append("\n=== READ-ONLY USB OWNER DIAGNOSTICS ===\n")
+            .append("Mode: read-only; tidak mengubah driver/interface/routing.\n");
         String path = device.getDeviceName();
         if (path == null || !path.matches("^/dev/bus/usb/[0-9]{3}/[0-9]{3}$")) {
-            report.append("Device path tidak cocok format USB Android; pencocokan sysfs dilewati.\\n");
+            report.append("Device path tidak cocok format USB Android; pencocokan sysfs dilewati.\n");
             appendRootCommandOutput(report, null, null);
             return;
         }
@@ -175,42 +174,43 @@ final class UsbAudioInterfaceProbe {
             int address = Integer.parseInt(parts[parts.length - 1]);
             appendRootCommandOutput(report, Integer.toString(bus), Integer.toString(address));
         } catch (NumberFormatException invalidPath) {
-            report.append("Nomor bus/device tidak valid; pencocokan sysfs dilewati.\\n");
+            report.append("Nomor bus/device tidak valid; pencocokan sysfs dilewati.\n");
             appendRootCommandOutput(report, null, null);
         }
     }
 
     private static void appendRootCommandOutput(StringBuilder report, String bus, String address) {
-        StringBuilder script = new StringBuilder("echo '--- sysfs USB interface drivers ---'; ");
+        StringBuilder script = new StringBuilder("echo sysfs_USB_interface_drivers; ");
         if (bus != null && address != null) {
-            script.append("target=''; for d in /sys/bus/usb/devices/*; do ")
-                .append("[ -f \\\"$d/busnum\\\" ] || continue; [ -f \\\"$d/devnum\\\" ] || continue; ")
-                .append("b=$(cat \\\"$d/busnum\\\" 2>/dev/null); n=$(cat \\\"$d/devnum\\\" 2>/dev/null); ")
-                .append("[ \\\"$b\\\" = '").append(bus).append("' ] || continue; ")
-                .append("[ \\\"$n\\\" = '").append(address).append("' ] || continue; target=\\\"$d\\\"; break; done; ")
-                .append("if [ -z \\\"$target\\\" ]; then echo 'Device tidak ditemukan di sysfs'; else ")
-                .append("echo \\\"USB sysfs: $target\\\"; for i in \\\"$target\\\":1.*; do [ -d \\\"$i\\\" ] || continue; ")
-                .append("cls=$(cat \\\"$i/bInterfaceClass\\\" 2>/dev/null); sub=$(cat \\\"$i/bInterfaceSubClass\\\" 2>/dev/null); ")
-                .append("num=$(cat \\\"$i/bInterfaceNumber\\\" 2>/dev/null); alt=$(cat \\\"$i/bAlternateSetting\\\" 2>/dev/null); ")
-                .append("drv=$(readlink \\\"$i/driver\\\" 2>/dev/null); driver=$(basename \\\"$drv\\\"); ")
-                .append("case \\\"$cls:$sub\\\" in 01:*) echo \\\"interface=$num alt=$alt class=$cls subclass=$sub driver=$driver path=$i\\\";; esac; ")
+            script.append("target=; for d in /sys/bus/usb/devices/*; do ")
+                .append("[ -f $d/busnum ] || continue; [ -f $d/devnum ] || continue; ")
+                .append("b=$(cat $d/busnum 2>/dev/null); n=$(cat $d/devnum 2>/dev/null); ")
+                .append("[ $b = ").append(bus).append(" ] || continue; ")
+                .append("[ $n = ").append(address).append(" ] || continue; target=$d; break; done; ")
+                .append("if [ -z $target ]; then echo device_not_found_in_sysfs; else ")
+                .append("echo USB_sysfs:$target; for i in $target:1.*; do [ -d $i ] || continue; ")
+                .append("cls=$(cat $i/bInterfaceClass 2>/dev/null); sub=$(cat $i/bInterfaceSubClass 2>/dev/null); ")
+                .append("num=$(cat $i/bInterfaceNumber 2>/dev/null); alt=$(cat $i/bAlternateSetting 2>/dev/null); ")
+                .append("drv=$(readlink $i/driver 2>/dev/null); driver=$(basename $drv); ")
+                .append("case $cls:$sub in 01:*) echo interface=$num,alt=$alt,class=$cls,subclass=$sub,driver=$driver,path=$i;; esac; ")
                 .append("done; fi; ");
         } else {
-            script.append("echo 'Sysfs mapping dilewati karena device path tidak valid'; ");
+            script.append("echo sysfs_mapping_skipped_invalid_device_path; ");
         }
-        script.append("echo '--- dumpsys usb: DAC match only ---'; ")
+        script.append("echo dumpsys_usb_DAC_matches; ")
             .append("if command -v dumpsys >/dev/null 2>&1; then ")
             .append("dumpsys usb 2>/dev/null | grep -i -E '06cb|1595|CX31993|HiFiAudio' | head -n 40 || true; ")
-            .append("echo '--- dumpsys media.audio_flinger: USB lines ---'; ")
+            .append("echo audio_flinger_USB_matches; ")
             .append("dumpsys media.audio_flinger 2>/dev/null | grep -i -E 'usb|06cb|1595|CX31993' | head -n 60 || true; ")
-            .append("else echo 'dumpsys tidak tersedia pada shell root'; fi");
-        report.append("Root diagnostic: perintah baca terbatas (maks. 7 detik).\\n");
+            .append("else echo dumpsys_unavailable; fi");
+
+        report.append("Root diagnostic: perintah baca terbatas (maks. 7 detik).\n");
         Process process = null;
         try {
             process = new ProcessBuilder("su", "-c", script.toString()).redirectErrorStream(true).start();
             if (!process.waitFor(7, java.util.concurrent.TimeUnit.SECONDS)) {
                 process.destroyForcibly();
-                report.append("Root diagnostic timeout; proses dihentikan.\\n");
+                report.append("Root diagnostic timeout; proses dihentikan.\n");
                 return;
             }
             java.io.InputStream input = process.getInputStream();
@@ -222,14 +222,15 @@ final class UsbAudioInterfaceProbe {
                 report.append(new String(buffer, 0, accepted, java.nio.charset.StandardCharsets.UTF_8));
                 total += accepted;
             }
-            if (total == 0) report.append("Tidak ada output dari perintah root.\\n");
-            report.append("\\nRoot diagnostic exit code: ").append(process.exitValue()).append('\\n');
+            if (total == 0) report.append("Tidak ada output dari perintah root.\n");
+            report.append("\nRoot diagnostic exit code: ").append(process.exitValue()).append('\n');
         } catch (java.io.IOException error) {
-            report.append("Root diagnostic tidak dapat dijalankan: ").append(error.getClass().getSimpleName())
-                .append(": ").append(String.valueOf(error.getMessage())).append('\\n');
+            report.append("Root diagnostic tidak dapat dijalankan: ")
+                .append(error.getClass().getSimpleName()).append(": ")
+                .append(String.valueOf(error.getMessage())).append('\n');
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            report.append("Root diagnostic terinterupsi.\\n");
+            report.append("Root diagnostic terinterupsi.\n");
         } finally {
             if (process != null) {
                 try { process.getInputStream().close(); } catch (java.io.IOException ignored) { }
@@ -237,3 +238,4 @@ final class UsbAudioInterfaceProbe {
             }
         }
     }
+}
