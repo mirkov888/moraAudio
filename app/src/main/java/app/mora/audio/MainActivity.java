@@ -427,7 +427,7 @@ public class MainActivity extends Activity {
         c.addView(action("Pantau suhu dan baterai", "Baca monitor bawaan modul", v -> showModuleMonitor()));
         c.addView(section("USB DAC / UAC"));
         c.addView(action("Periksa perangkat USB", "Baca descriptor USB dan deteksi interface AudioStreaming", v -> showUsbHostReport()));
-        c.addView(action("Uji kepemilikan interface", "Claim interface dan uji alternate setting; tanpa transfer audio", v -> probeUsbAudioInterface()));
+        c.addView(action("Diagnostik claim interface", "Uji claim tanpa force dan kumpulkan info driver secara read-only", v -> probeUsbAudioInterface()));
         c.addView(action("Simpan hasil pengujian (.txt)", "Ekspor scan USB dan hasil probe menjadi satu file teks", v -> saveUsbTestReport()));
         c.addView(section("Cadangan pengaturan"));
         c.addView(action("Ekspor cadangan", "Simpan konfigurasi ke Download/mora_backup.tar.gz", v -> exportModuleBackup()));
@@ -1160,8 +1160,8 @@ public class MainActivity extends Activity {
             return;
         }
         new android.app.AlertDialog.Builder(this)
-            .setTitle("Uji kepemilikan interface USB?")
-            .setMessage("Mora Audio akan mencoba claim interface AudioStreaming, berpindah alternate setting, memulihkan alt 0, lalu melepas interface. Tidak ada PCM yang dikirim. Audio dari aplikasi lain mungkin terputus sebentar. Lanjutkan?")
+            .setTitle("Jalankan diagnostik interface USB?")
+            .setMessage("Mora Audio hanya akan mencoba claim interface AudioStreaming dengan force=false. Jika gagal, aplikasi mengumpulkan informasi driver dari sysfs dan dumpsys secara read-only. Tes ini tidak mengubah alternate setting, tidak melepas driver kernel, tidak mengirim PCM, dan tidak mengubah routing audio. Lanjutkan?")
             .setNegativeButton("Batal", null)
             .setPositiveButton("Uji", (dialog, which) -> {
                 logView.setText("Menjalankan probe interface USB...");
