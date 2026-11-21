@@ -130,7 +130,7 @@ final class UsbAudioInterfaceProbe {
                     .append("Kemungkinan interface sedang dimiliki audio service/HAL, atau penolakan host/driver. ")
                     .append("Hasil ini tidak membuktikan DAC tidak mendukung exclusive playback.\n")
                     .append("Keselamatan: force=true dan pelepasan driver kernel sengaja tidak digunakan.\n");
-                appendReadOnlyOwnerDiagnostics(report, device);
+                appendReadOnlyOwnerDiagnostics(report, device, playbackId);
                 return report.toString();
             }
 
@@ -159,27 +159,27 @@ final class UsbAudioInterfaceProbe {
     }
 
     /** Read-only ownership evidence; never writes sysfs or changes USB/audio state. */
-    private static void appendReadOnlyOwnerDiagnostics(StringBuilder report, UsbDevice device) {
+    private static void appendReadOnlyOwnerDiagnostics(StringBuilder report, UsbDevice device, int playbackId) {
         report.append("\n=== READ-ONLY USB OWNER DIAGNOSTICS ===\n")
             .append("Mode: read-only; tidak mengubah driver/interface/routing.\n");
         String path = device.getDeviceName();
         if (path == null || !path.matches("^/dev/bus/usb/[0-9]{3}/[0-9]{3}$")) {
             report.append("Device path tidak cocok format USB Android; pencocokan sysfs dilewati.\n");
-            appendRootCommandOutput(report, null, null);
+            appendRootCommandOutput(report, null, null, playbackId);
             return;
         }
         String[] parts = path.split("/");
         try {
             int bus = Integer.parseInt(parts[parts.length - 2]);
             int address = Integer.parseInt(parts[parts.length - 1]);
-            appendRootCommandOutput(report, Integer.toString(bus), Integer.toString(address));
+            appendRootCommandOutput(report, Integer.toString(bus), Integer.toString(address), playbackId);
         } catch (NumberFormatException invalidPath) {
             report.append("Nomor bus/device tidak valid; pencocokan sysfs dilewati.\n");
             appendRootCommandOutput(report, null, null);
         }
     }
 
-    private static void appendRootCommandOutput(StringBuilder report, String bus, String address) {
+    private static void appendRootCommandOutput(StringBuilder report, String bus, String address, int playbackId) {
         StringBuilder script = new StringBuilder("echo sysfs_USB_interface_drivers; ");
         if (bus != null && address != null) {
             script.append("target=none; for d in /sys/bus/usb/devices/*; do ")
@@ -187,15 +187,21 @@ final class UsbAudioInterfaceProbe {
                 .append("b=$(cat $d/busnum 2>/dev/null); n=$(cat $d/devnum 2>/dev/null); ")
                 .append("[ $b = ").append(bus).append(" ] || continue; ")
                 .append("[ $n = ").append(address).append(" ] || continue; target=$d; break; done; ")
-                .append("if [ $target = none ]; then echo device_not_found_in_sysfs; else ")
-                .append("echo USB_sysfs:$target; for i in $target:1.*; do [ -d $i ] || continue; ")
+                .append("if [ $target = none ]; then echo device_not_found_in_sysfs; echo PLAYBACK_OWNERSHIP=UNKNOWN; else ")
+                .append("echo USB_sysfs:$target; playback_found=0; for i in $target:1.*; do [ -d $i ] || continue; ")
                 .append("cls=$(cat $i/bInterfaceClass 2>/dev/null); sub=$(cat $i/bInterfaceSubClass 2>/dev/null); ")
                 .append("num=$(cat $i/bInterfaceNumber 2>/dev/null); alt=$(cat $i/bAlternateSetting 2>/dev/null); ")
                 .append("drv=$(readlink $i/driver 2>/dev/null); driver=$(basename $drv); ")
                 .append("case $cls:$sub in 01:*) echo interface=$num,alt=$alt,class=$cls,subclass=$sub,driver=$driver,path=$i;; esac; ")
-                .append("done; fi; ");
+                .append("if [ $cls = 01 ] && [ $sub = 02 ]; then num_dec=$((0x$num)); ")
+                .append("if [ $num_dec -eq ").append(playbackId).append(" ]; then playback_found=1; ")
+                .append("if [ -z $driver ]; then echo PLAYBACK_OWNERSHIP=UNBOUND; ")
+                .append("elif [ $driver = snd-usb-audio ]; then echo PLAYBACK_OWNERSHIP=KERNEL_OWNED; ")
+                .append("else echo PLAYBACK_OWNERSHIP=KERNEL_OTHER_DRIVER:$driver; fi; fi; fi; ")
+                .append("done; if [ $playback_found -eq 0 ]; then echo PLAYBACK_OWNERSHIP=UNKNOWN; fi; fi; ");
         } else {
-            script.append("echo sysfs_mapping_skipped_invalid_device_path; ");
+            script.append("echo sysfs_mapping_skipped_invalid_device_path; ")
+                .append("echo PLAYBACK_OWNERSHIP=UNKNOWN; ");
         }
         script.append("echo dumpsys_usb_DAC_matches; ")
             .append("if command -v dumpsys >/dev/null 2>&1; then ")
