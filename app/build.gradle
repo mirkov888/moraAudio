@@ -1,6 +1,9 @@
 // Mora Audio Suite - made by Mora & Claude Code
 plugins { id 'com.android.application' }
 
+def releaseStorePath = System.getenv('MORA_KEYSTORE_PATH')
+def ciVersionCode = System.getenv('MORA_VERSION_CODE')
+
 android {
     namespace 'app.mora.audio'
     compileSdk 34
@@ -8,15 +11,34 @@ android {
         applicationId 'app.mora.audio'
         minSdk 26
         targetSdk 34
-        versionCode 3
-        versionName '2.1.0'
+        // CI supplies a monotonically increasing GitHub Actions run number.
+        versionCode ciVersionCode ? ciVersionCode.toInteger() : 4
+        versionName '2.2.0'
+    }
+    signingConfigs {
+        release {
+            if (releaseStorePath) {
+                storeFile file(releaseStorePath)
+                storePassword System.getenv('MORA_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('MORA_KEY_ALIAS')
+                keyPassword System.getenv('MORA_KEY_PASSWORD')
+            }
+        }
     }
     buildTypes {
-        release { minifyEnabled false }
+        release {
+            minifyEnabled false
+            if (releaseStorePath) { signingConfig signingConfigs.release }
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
 }
-// no dependencies on purpose: the app only uses the platform widgets and talks to the module through root
+dependencies {
+    implementation 'com.google.android.material:material:1.12.0'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+// Runtime has no third-party dependencies; JUnit is used only for local parser tests.

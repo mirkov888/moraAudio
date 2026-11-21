@@ -1,9 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Mora Audio Suite - made by Mora & Claude Code -->
 <resources>
-    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@android:color/black</item>
-        <item name="android:statusBarColor">#0B0F14</item>
-        <item name="android:navigationBarColor">#0B0F14</item>
+    <style name="AppTheme" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#3DD6C6</item>
+        <item name="colorOnPrimary">#00201D</item>
+        <item name="colorPrimaryContainer">#0F4F49</item>
+        <item name="colorOnPrimaryContainer">#A1F2E8</item>
+        <item name="colorSecondary">#7C9CFF</item>
+        <item name="colorOnSecondary">#0A1B4D</item>
+        <item name="colorSurface">#0E141C</item>
+        <item name="colorOnSurface">#EAF0F6</item>
+        <item name="colorSurfaceVariant">#1B2430</item>
+        <item name="colorOnSurfaceVariant">#9AA7B6</item>
+        <item name="colorOutline">#5C6978</item>
+        <item name="colorError">#FF6B6B</item>
+        <item name="android:windowBackground">@color/mora_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

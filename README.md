@@ -14,6 +14,14 @@ ViPER driver status, BassBoost, selected audio tuning switches, and diagnostic a
 Without the module, the app can open but module-dependent controls will report that the module is unavailable.
 The app does not request network access and does not currently connect to Mora Shield.
 
+## UI
+
+App version 2.2.0 adopts a Material 3 dark theme with a restrained liquid-glass treatment:
+an animated aurora backdrop, translucent glass cards, a floating icon navigation bar,
+Material switches, sliders, and buttons. The aurora animation pauses when the app is not
+visible and respects the system animation setting. Glass surfaces are drawn locally;
+they do not use expensive live background blur.
+
 ## Build
 
 The project uses Android Gradle Plugin 8.5.2, Gradle 8.7, Java 17, and compileSdk 34.
@@ -50,6 +58,10 @@ protocol and permissions are stable. The audio controls must continue to work wh
 Mora Shield is absent, disconnected, or uninstalled. Connector access should be opt-in,
 capability-scoped, authenticated, and must never expose arbitrary root shell execution.
 
+## Rust audio core
+
+The repository now includes a platform-independent Rust workspace at `crates/mora-audio-core`. It models USB PCM capabilities and playback ownership transitions, with unit tests in GitHub Actions. This is a foundation only: Android USB access, system-wide routing, direct USB playback, and bit-perfect verification are not implemented yet.
+
 ## Current limitations
 
 - This APK controls the installed root module; it does not implement audio decoding or
@@ -58,3 +70,35 @@ capability-scoped, authenticated, and must never expose arbitrary root shell exe
   compatibility cannot be verified from this project alone.
 - A successful GitHub Actions build is still required to confirm compilation against
   the Android SDK, followed by testing on the target device.
+
+
+## Install updates without uninstalling
+
+Mora Audio keeps the same Android application ID (`app.mora.audio`). Android also requires
+every upgrade APK to be signed with the same private signing key and to have a higher
+`versionCode`. GitHub Actions now uses its run number as the CI version code.
+
+For upgrade-safe release APKs, configure these repository Actions secrets:
+
+- `MORA_KEYSTORE_BASE64`: Base64-encoded private keystore.
+- `MORA_KEYSTORE_PASSWORD`: keystore password.
+- `MORA_KEY_ALIAS`: key alias.
+- `MORA_KEY_PASSWORD`: private key password.
+
+Generate a private keystore locally and keep a secure backup:
+
+```bash
+keytool -genkeypair -v -keystore mora-audio-release.jks -keyalg RSA -keysize 4096 -validity 10000 -alias mora-audio
+base64 -w0 mora-audio-release.jks
+```
+
+Copy the Base64 output into `MORA_KEYSTORE_BASE64`; add the other values as separate
+Actions secrets in **Settings → Secrets and variables → Actions**. Never commit the
+keystore or passwords to the repository. Once configured, CI produces a persistently
+signed release APK. Until all four secrets are configured, CI deliberately falls back
+to a temporary debug-signed APK, which is not guaranteed to install as an update.
+
+The currently distributed debug APK may have a different temporary certificate. If so,
+installing the first persistent-key APK requires a one-time uninstall of that old APK;
+after the persistent-key APK is installed, future updates can be installed over it
+without uninstalling and app data remains intact.

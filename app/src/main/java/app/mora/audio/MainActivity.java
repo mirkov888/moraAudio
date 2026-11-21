@@ -2,6 +2,20 @@
 package app.mora.audio;
 
 import android.app.Activity;
+import android.graphics.Color;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.RippleDrawable;
+import android.view.WindowInsets;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.materialswitch.MaterialSwitch;
+import com.google.android.material.slider.LabelFormatter;
+import com.google.android.material.slider.Slider;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbManager;
 import android.media.AudioManager;
 import android.media.AudioDeviceInfo;
 import android.media.AudioPlaybackConfiguration;
@@ -34,19 +48,22 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 
 /** Mora Audio: a root app that drives the Mora Audio Suite module (same scripts the module WebUI uses). */
 public class MainActivity extends Activity {
-    private static final int BG = 0xFF0B0F14;
-    private static final int CARD = 0xFF141A22;
-    private static final int CARD2 = 0xFF1B232D;
-    private static final int TEXT = 0xFFEAF0F6;
-    private static final int MUTED = 0xFF8794A3;
-    private static final int ACCENT = 0xFF3DD6C6;
-    private static final int ACCENT2 = 0xFF7C9CFF;
+    private static final int BG = 0xFF0D1117;
+    private static final int CARD = 0xFF171E28;
+    private static final int CARD2 = 0xFF222C38;
+    private static final int TEXT = 0xFFE4E9F2;
+    private static final int MUTED = 0xFFA8B2C2;
+    private static final int ACCENT = 0xFF9ADFD6;
+    private static final int ACCENT2 = 0xFFB5C7FF;
     private static final int BAD = 0xFFFF6B6B;
     private static final int OK = 0xFF5BD68A;
     private static final int WARN = 0xFFFFC857;
+    private static final String ACTION_USB_PERMISSION = "app.mora.audio.USB_PERMISSION";
 
     private static final String[] MODES = {"audiophile", "movie", "power_saver"};
     private static final String[] MODE_TITLES = {"Musik", "Film", "Hemat"};
@@ -69,52 +86,156 @@ public class MainActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final List<View> pages = new ArrayList<>();
+    private final List<LinearLayout> contents = new ArrayList<>();
     private final TextView[] tabs = new TextView[4];
-    private final View[] tabBars = new View[4];
+    private final View[] tabPills = new View[4];
+    private final ImageView[] tabIcons = new ImageView[4];
+    private static final int[] TAB_ICONS = {R.drawable.ic_tab_home, R.drawable.ic_tab_sound, R.drawable.ic_tab_tune, R.drawable.ic_tab_system};
+    private FrameLayout rootView;
+    private AuroraView aurora;
+    private View tabBar, topScrim, bottomScrim;
+    private int insetTop, insetBottom, curTab = -1;
     private final LinearLayout[] modeCards = new LinearLayout[3];
     private final List<View> bound = new ArrayList<>();
 
     private TextView heroTitle, heroSub, heroChip, statModule, statAndroid, statRys, statBass, statDriver, statMode, statAudioServer, statOutput;
     private TextView fixBtn, logView, nowTitle, nowArtist, nowState, nowOutput, nowQuality, mediaPermissionBtn;
     private long lastQualityRead;
+    private static final int REQUEST_SAVE_TEST_REPORT = 7401;
+    private String lastUsbTestReport = "";
     private final Handler liveHandler = new Handler(Looper.getMainLooper());
     private boolean livePolling;
     private final Runnable livePoll = new Runnable() { public void run() { if (livePolling) { refreshNowPlaying(); liveHandler.postDelayed(this, 1000); } } };
     private LinearLayout hero;
     private boolean binding;
+    private boolean usbReceiverRegistered;
+    private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (intent == null) return;
+            String action = intent.getAction();
+            if (ACTION_USB_PERMISSION.equals(action)) {
+                boolean granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false);
+                UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+                String name = device == null ? "USB DAC" : String.valueOf(device.getProductName());
+                UsbManager manager = (UsbManager) getSystemService(USB_SERVICE);
+                UsbDevice audioDevice = UsbHostInspector.findAudioStreamingDevice(manager);
+                String result = granted
+                    ? "Izin USB diberikan untuk " + name + ".\n\n"
+                        + UsbHostInspector.inspect(manager) + "\n\n"
+                        + UsbHostInspector.inspectRawDescriptors(manager, device != null ? device : audioDevice)
+                    : "Izin USB ditolak untuk " + name + ". Sambungkan ulang DAC atau izinkan akses saat diminta.";
+                lastUsbTestReport = result;
+                if (logView != null) logView.setText(result);
+                toast(granted ? "Izin USB diberikan" : "Izin USB ditolak");
+            } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)
+                    || UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
+                if (logView != null) logView.setText(
+                    UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)
+                        ? "Perangkat USB tersambung. Ketuk Periksa perangkat USB untuk meminta izin."
+                        : "Perangkat USB dilepas.");
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        getWindow().setStatusBarColor(BG);
-        getWindow().setNavigationBarColor(CARD);
+        android.view.Window window = getWindow();
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            window.setNavigationBarContrastEnforced(false);
+            window.setStatusBarContrastEnforced(false);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false);
+        } else {
+            window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        }
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BG);
-        root.setFitsSystemWindows(true);
+        FrameLayout root = new FrameLayout(this);
+        rootView = root;
+        aurora = new AuroraView(this);
+        root.addView(aurora, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         FrameLayout body = new FrameLayout(this);
         pages.add(page(body, buildHome()));
         pages.add(page(body, buildSound()));
         pages.add(page(body, buildTuning()));
         pages.add(page(body, buildSystem()));
-        root.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        root.addView(buildTabBar(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)));
+        root.addView(body, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        topScrim = new View(this);
+        topScrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[]{0xE6070B11, 0x00070B11}));
+        root.addView(topScrim, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(28), Gravity.TOP));
+        bottomScrim = new View(this);
+        bottomScrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
+            new int[]{0xF2070B11, 0x00070B11}));
+        root.addView(bottomScrim, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(140), Gravity.BOTTOM));
+
+        tabBar = buildTabBar();
+        FrameLayout.LayoutParams tabParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(68), Gravity.BOTTOM);
+        tabParams.setMargins(dp(16), 0, dp(16), dp(12));
+        root.addView(tabBar, tabParams);
+
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets system = insets.getInsets(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                insetTop = system.top;
+                insetBottom = system.bottom;
+            } else {
+                insetTop = insets.getSystemWindowInsetTop();
+                insetBottom = insets.getSystemWindowInsetBottom();
+            }
+            applyInsets();
+            return insets;
+        });
         setContentView(root);
+        applyInsets();
+        root.requestApplyInsets();
+        registerUsbReceiver();
         showTab(0);
         refresh();
+    }
+
+    private void applyInsets() {
+        for (LinearLayout content : contents) {
+            content.setPadding(dp(16), insetTop + dp(16), dp(16), insetBottom + dp(112));
+        }
+        if (topScrim != null && topScrim.getLayoutParams() != null) {
+            topScrim.getLayoutParams().height = insetTop + dp(28);
+            topScrim.requestLayout();
+        }
+        if (bottomScrim != null && bottomScrim.getLayoutParams() != null) {
+            bottomScrim.getLayoutParams().height = insetBottom + dp(140);
+            bottomScrim.requestLayout();
+        }
+        if (tabBar != null && tabBar.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) tabBar.getLayoutParams();
+            params.bottomMargin = insetBottom + dp(12);
+            tabBar.setLayoutParams(params);
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        if (aurora != null) aurora.setRunning(true);
         if (heroTitle != null) { refresh(); startLivePolling(); }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        if (aurora != null) aurora.setRunning(false);
         livePolling = false;
         liveHandler.removeCallbacks(livePoll);
     }
@@ -124,6 +245,10 @@ public class MainActivity extends Activity {
         super.onDestroy();
         livePolling = false;
         liveHandler.removeCallbacks(livePoll);
+        if (usbReceiverRegistered) {
+            unregisterReceiver(usbReceiver);
+            usbReceiverRegistered = false;
+        }
         io.shutdownNow();
     }
 
@@ -132,7 +257,7 @@ public class MainActivity extends Activity {
         ScrollView sv = new ScrollView(this);
         sv.setFillViewport(true);
         sv.setVerticalScrollBarEnabled(false);
-        content.setPadding(dp(16), dp(14), dp(16), dp(24));
+        contents.add(content);
         sv.addView(content, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         parent.addView(sv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         return sv;
@@ -162,7 +287,8 @@ public class MainActivity extends Activity {
         hero.setPadding(dp(20), dp(20), dp(20), dp(20));
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF12453F, 0xFF1B2A5E});
         g.setCornerRadius(dp(24));
-        hero.setBackground(g);
+        hero.setBackground(glassSurface(0xFF203A4B, 0x669ADFD6, true));
+        hero.setElevation(dp(3));
         LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         hlp.setMargins(0, dp(16), 0, 0);
         hero.setLayoutParams(hlp);
@@ -299,6 +425,10 @@ public class MainActivity extends Activity {
         c.addView(action("Periksa pemasangan", "Root, mount, HAL, ViPER, konflik dan SELinux", v -> showModuleCheck()));
         c.addView(action("Laporan lengkap", "Baca laporan diagnostik tanpa mengubah pengaturan", v -> showModuleReport()));
         c.addView(action("Pantau suhu dan baterai", "Baca monitor bawaan modul", v -> showModuleMonitor()));
+        c.addView(section("USB DAC / UAC"));
+        c.addView(action("Periksa perangkat USB", "Baca descriptor USB dan deteksi interface AudioStreaming", v -> showUsbHostReport()));
+        c.addView(action("Diagnostik claim interface", "Uji claim tanpa force dan kumpulkan info driver secara read-only", v -> probeUsbAudioInterface()));
+        c.addView(action("Simpan hasil pengujian (.txt)", "Ekspor scan USB dan hasil probe menjadi satu file teks", v -> saveUsbTestReport()));
         c.addView(section("Cadangan pengaturan"));
         c.addView(action("Ekspor cadangan", "Simpan konfigurasi ke Download/mora_backup.tar.gz", v -> exportModuleBackup()));
         c.addView(section("Log"));
@@ -320,38 +450,74 @@ public class MainActivity extends Activity {
     private View buildTabBar() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackgroundColor(CARD);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(8), dp(6), dp(8), dp(6));
+        bar.setBackground(glass(34, 0, 1.6f, 0xB30B1119));
+        bar.setElevation(dp(12));
         for (int i = 0; i < 4; i++) {
-            final int idx = i;
+            final int index = i;
             LinearLayout cell = new LinearLayout(this);
             cell.setOrientation(LinearLayout.VERTICAL);
             cell.setGravity(Gravity.CENTER_HORIZONTAL);
-            View ind = new View(this);
-            GradientDrawable gd = new GradientDrawable();
-            gd.setColor(ACCENT);
-            gd.setCornerRadius(dp(2));
-            ind.setBackground(gd);
-            cell.addView(ind, new LinearLayout.LayoutParams(dp(28), dp(3)));
-            TextView t = label(TAB_NAMES[i], 13, MUTED, true);
-            t.setGravity(Gravity.CENTER);
-            cell.addView(t, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-            cell.setOnClickListener(v -> showTab(idx));
-            tabs[i] = t;
-            tabBars[i] = ind;
-            bar.addView(cell, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+            FrameLayout pill = new FrameLayout(this);
+            ImageView icon = new ImageView(this);
+            icon.setImageResource(TAB_ICONS[i]);
+            icon.setContentDescription(TAB_NAMES[i]);
+            pill.addView(icon, new FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER));
+            cell.addView(pill, new LinearLayout.LayoutParams(dp(60), dp(32)));
+            TextView title = label(TAB_NAMES[i], 12, MUTED, true);
+            title.setGravity(Gravity.CENTER);
+            cell.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            cell.setOnClickListener(v -> showTab(index));
+            tabs[i] = title;
+            tabPills[i] = pill;
+            tabIcons[i] = icon;
+            bar.addView(cell, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
         }
         return bar;
     }
 
     private void showTab(int idx) {
-        for (int i = 0; i < pages.size(); i++) pages.get(i).setVisibility(i == idx ? View.VISIBLE : View.GONE);
+        boolean changed = curTab != idx;
+        curTab = idx;
+        for (int i = 0; i < pages.size(); i++) {
+            pages.get(i).setVisibility(i == idx ? View.VISIBLE : View.GONE);
+        }
         for (int i = 0; i < 4; i++) {
-            tabs[i].setTextColor(i == idx ? ACCENT : MUTED);
-            tabBars[i].setVisibility(i == idx ? View.VISIBLE : View.INVISIBLE);
+            boolean selected = i == idx;
+            tabs[i].setTextColor(selected ? TEXT : MUTED);
+            tabIcons[i].setColorFilter(selected ? 0xFFC8FFF8 : MUTED);
+            if (selected) {
+                GradientDrawable pill = new GradientDrawable();
+                pill.setColor(0x403DD6C6);
+                pill.setCornerRadius(dp(16));
+                pill.setStroke(dp(1), 0x663DD6C6);
+                tabPills[i].setBackground(pill);
+            } else {
+                tabPills[i].setBackground(null);
+            }
+        }
+        if (changed) {
+            View page = pages.get(idx);
+            page.setAlpha(0f);
+            page.animate().alpha(1f).setDuration(220).start();
         }
     }
 
     // ------------------------------------------------------------------ widgets
+    private Drawable glass(int radiusDp, int tint, float strength, int under) {
+        return new GlassDrawable(dp(radiusDp), Math.max(1, dp(1)), tint, strength, under);
+    }
+
+    private Drawable ripple(Drawable content, int radiusDp) {
+        GradientDrawable mask = new GradientDrawable();
+        mask.setColor(Color.WHITE);
+        mask.setCornerRadius(dp(radiusDp));
+        return new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), content, mask);
+    }
+
     private TextView label(String s, int sp, int color, boolean bold) {
         TextView t = new TextView(this);
         t.setText(s);
@@ -370,42 +536,53 @@ public class MainActivity extends Activity {
 
     private LinearLayout card() {
         LinearLayout c = column();
-        c.setPadding(dp(16), dp(10), dp(16), dp(10));
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(CARD);
-        g.setCornerRadius(dp(20));
-        c.setBackground(g);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, dp(6), 0, 0);
+        c.setPadding(dp(18), dp(10), dp(18), dp(10));
+        c.setBackground(glass(24, 0, 1f, 0));
+        c.setElevation(dp(1));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(8), 0, 0);
         c.setLayoutParams(lp);
         return c;
     }
 
     private TextView button(String s, boolean primary) {
-        TextView b = label(s, 15, primary ? 0xFF062623 : TEXT, true);
-        b.setGravity(Gravity.CENTER);
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(primary ? ACCENT : CARD2);
-        g.setCornerRadius(dp(14));
-        b.setBackground(g);
-        b.setClickable(true);
+        MaterialButton b = new MaterialButton(this);
+        b.setText(s);
+        b.setAllCaps(false);
+        b.setTextSize(15);
+        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        b.setInsetTop(0);
+        b.setInsetBottom(0);
+        b.setCornerRadius(dp(24));
+        b.setTextColor(primary ? 0xFF00201D : TEXT);
+        b.setBackgroundTintList(ColorStateList.valueOf(primary ? ACCENT : 0x26FFFFFF));
+        if (!primary) {
+            b.setStrokeWidth(dp(1));
+            b.setStrokeColor(ColorStateList.valueOf(0x40FFFFFF));
+        }
+        b.setRippleColor(ColorStateList.valueOf(primary ? 0x33FFFFFF : 0x22FFFFFF));
         return b;
     }
 
-    private View action(String title, String sub, View.OnClickListener l) {
-        LinearLayout r = column();
-        r.setPadding(dp(16), dp(14), dp(16), dp(14));
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(CARD);
-        g.setCornerRadius(dp(18));
-        r.setBackground(g);
-        r.addView(label(title, 15, TEXT, true));
-        r.addView(label(sub, 12, MUTED, false));
-        r.setOnClickListener(l);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, dp(6), 0, 0);
-        r.setLayoutParams(lp);
-        return r;
+    private View action(String title, String sub, View.OnClickListener listener) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(18), dp(14), dp(14), dp(14));
+        row.setBackground(ripple(glass(22, 0, 1f, 0), 22));
+        LinearLayout text = column();
+        text.addView(label(title, 16, TEXT, true));
+        text.addView(label(sub, 13, MUTED, false));
+        row.addView(text, new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(label("\u203A", 26, MUTED, false));
+        row.setOnClickListener(listener);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(8), 0, 0);
+        row.setLayoutParams(lp);
+        return row;
     }
 
     private TextView stat(LinearLayout parent, String name) {
@@ -421,54 +598,60 @@ public class MainActivity extends Activity {
         return v;
     }
 
-    private void styleMode(LinearLayout m, boolean active) {
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(active ? 0xFF123B37 : CARD);
-        g.setCornerRadius(dp(18));
-        g.setStroke(dp(active ? 2 : 1), active ? ACCENT : CARD2);
-        m.setBackground(g);
+    private void styleMode(LinearLayout mode, boolean active) {
+        mode.setBackground(ripple(active
+            ? glass(22, ACCENT, 1.3f, 0) : glass(22, 0, 1f, 0), 22));
+        if (mode.getChildCount() > 0 && mode.getChildAt(0) instanceof TextView) {
+            ((TextView) mode.getChildAt(0)).setTextColor(active ? ACCENT : TEXT);
+        }
     }
 
-    private View toggle(final Ctl c) {
-        LinearLayout r = new LinearLayout(this);
-        r.setOrientation(LinearLayout.HORIZONTAL);
-        r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setPadding(0, dp(8), 0, dp(8));
-        r.addView(label(c.label, 15, TEXT, false), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        Switch s = new Switch(this);
-        s.setTag(c);
-        s.setThumbTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}}, new int[]{ACCENT, 0xFF8794A3}));
-        s.setTrackTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}}, new int[]{0xFF1E6E66, 0xFF2A3440}));
-        s.setOnCheckedChangeListener((v, on) -> {
-            if (!binding) sendConfig(c.key, on ? "1" : "0");
+    private View toggle(final Ctl control) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(6), 0, dp(6));
+        row.addView(label(control.label, 16, TEXT, false),
+            new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        MaterialSwitch toggle = new MaterialSwitch(this);
+        toggle.setTag(control);
+        toggle.setOnCheckedChangeListener((view, checked) -> {
+            if (!binding) sendConfig(control.key, checked ? "1" : "0");
         });
-        bound.add(s);
-        r.addView(s);
-        return r;
+        bound.add(toggle);
+        row.addView(toggle);
+        return row;
     }
 
-    private View slider(final Ctl c, int max) {
-        LinearLayout r = column();
-        r.setPadding(0, 0, 0, dp(6));
-        c.valueLabel = label(c.label, 12, MUTED, false);
-        r.addView(c.valueLabel);
-        SeekBar sb = new SeekBar(this);
-        sb.setMax(max / c.step);
-        sb.setTag(c);
-        sb.setProgressTintList(ColorStateList.valueOf(ACCENT));
-        sb.setThumbTintList(ColorStateList.valueOf(ACCENT));
-        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar s, int p, boolean fromUser) {
-                c.valueLabel.setText(c.label + ": " + (p * c.step) + c.unit);
-            }
-            @Override public void onStartTrackingTouch(SeekBar s) { }
-            @Override public void onStopTrackingTouch(SeekBar s) {
-                if (!binding) sendConfig(c.key, String.valueOf(s.getProgress() * c.step));
+    private View slider(final Ctl control, int max) {
+        LinearLayout row = column();
+        row.setPadding(0, dp(2), 0, dp(6));
+        control.valueLabel = label(control.label, 13, MUTED, false);
+        row.addView(control.valueLabel);
+        Slider slider = new Slider(this);
+        slider.setValueFrom(0f);
+        slider.setValueTo((float) (max / control.step));
+        slider.setStepSize(1f);
+        slider.setValue(0f);
+        slider.setTag(control);
+        slider.setLabelBehavior(LabelFormatter.LABEL_GONE);
+        slider.setTrackActiveTintList(ColorStateList.valueOf(ACCENT));
+        slider.setThumbTintList(ColorStateList.valueOf(ACCENT));
+        slider.setTrackInactiveTintList(ColorStateList.valueOf(0x33FFFFFF));
+        slider.setHaloTintList(ColorStateList.valueOf(0x293DD6C6));
+        slider.addOnChangeListener((view, value, fromUser) ->
+            control.valueLabel.setText(control.label + ": "
+                + (Math.round(value) * control.step) + control.unit));
+        slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
+            @Override public void onStartTrackingTouch(Slider view) { }
+            @Override public void onStopTrackingTouch(Slider view) {
+                if (!binding) sendConfig(control.key,
+                    String.valueOf(Math.round(view.getValue()) * control.step));
             }
         });
-        bound.add(sb);
-        r.addView(sb);
-        return r;
+        bound.add(slider);
+        row.addView(slider);
+        return row;
     }
 
     private int dp(int v) {
@@ -592,26 +775,42 @@ public class MainActivity extends Activity {
 
     private void readAudioQuality(AudioDeviceInfo[] devices) {
         io.execute(() -> {
-            String capability = "Dukungan perangkat: belum diketahui";
-            if (devices != null && devices.length > 0) {
-                AudioDeviceInfo d = devices[0];
-                StringBuilder b = new StringBuilder("Dukungan perangkat: ");
-                int[] rates = d.getSampleRates();
-                int[] channels = d.getChannelCounts();
-                int[] encodings = d.getEncodings();
+            AudioDeviceInfo usb = null;
+            if (devices != null) {
+                for (AudioDeviceInfo device : devices) {
+                    int type = device.getType();
+                    if (type == AudioDeviceInfo.TYPE_USB_DEVICE || type == AudioDeviceInfo.TYPE_USB_HEADSET) {
+                        usb = device;
+                        break;
+                    }
+                }
+            }
+            String capability;
+            if (usb == null) {
+                capability = "USB DAC: tidak terdeteksi. Data speaker/Bluetooth tidak dipakai sebagai kemampuan DAC USB.";
+            } else {
+                StringBuilder b = new StringBuilder("USB DAC: ").append(usb.getProductName()).append("\nDukungan: ");
+                int[] rates = usb.getSampleRates();
+                int[] channels = usb.getChannelCounts();
+                int[] encodings = usb.getEncodings();
                 if (rates != null && rates.length > 0) {
-                    int max = 0;
-                    for (int rate : rates) if (rate > max) max = rate;
-                    b.append("hingga ").append(max / 1000.0).append(" kHz");
-                } else b.append("sample rate tidak diekspos");
+                    java.util.Arrays.sort(rates);
+                    b.append("sample rate ");
+                    for (int i = 0; i < rates.length; i++) {
+                        if (i > 0) b.append(", ");
+                        b.append(rates[i] / 1000.0).append(" kHz");
+                    }
+                } else b.append("sample rate tidak diekspos Android");
                 if (channels != null && channels.length > 0) {
-                    int maxChannels = 0;
-                    for (int count : channels) if (count > maxChannels) maxChannels = count;
-                    b.append(" • ").append(maxChannels).append(" channel");
+                    b.append(" • channel ");
+                    for (int i = 0; i < channels.length; i++) {
+                        if (i > 0) b.append("/");
+                        b.append(channels[i]);
+                    }
                 }
                 if (encodings != null && encodings.length > 0) {
                     b.append(" • format ");
-                    for (int i = 0; i < encodings.length && i < 4; i++) {
+                    for (int i = 0; i < encodings.length; i++) {
                         if (i > 0) b.append(", ");
                         b.append(audioEncodingName(encodings[i]));
                     }
@@ -626,8 +825,8 @@ public class MainActivity extends Activity {
                 int hz = Integer.parseInt(rate.group(1));
                 mixer = "Mixer aktif: " + (hz >= 1000 ? (hz / 1000.0) + " kHz" : hz + " Hz");
             }
-            final String info = capability + "\\n" + mixer
-                + "\\nCatatan: kemampuan perangkat bukan bukti kualitas file/stream yang sedang diputar.";
+            final String info = capability + "\n" + mixer
+                + "\nCatatan: kemampuan DAC dan sample rate mixer bukan bukti bit-perfect.";
             ui.post(() -> { if (nowQuality != null) nowQuality.setText(info); });
         });
     }
@@ -701,10 +900,10 @@ public class MainActivity extends Activity {
         binding = true;
         for (View v : bound) {
             Ctl c = (Ctl) v.getTag();
-            if (v instanceof Switch) {
-                ((Switch) v).setChecked(j.optInt(c.field) == 1);
-            } else if (v instanceof SeekBar) {
-                ((SeekBar) v).setProgress(Math.max(0, j.optInt(c.field) / c.step));
+            if (v instanceof MaterialSwitch) {
+                ((MaterialSwitch) v).setChecked(j.optInt(c.field) == 1);
+            } else if (v instanceof Slider) {
+                ((Slider) v).setValue(Math.max(0, j.optInt(c.field) / c.step));
             }
         }
         binding = false;
@@ -797,7 +996,7 @@ public class MainActivity extends Activity {
         io.execute(() -> {
             Root.Result result = Root.module(script, args);
             final String out = result.ok() ? result.out
-                : "Fitur " + title + " belum tersedia atau gagal. Pastikan modul terbaru terpasang.\\n" + result.out;
+                : "Fitur " + title + " belum tersedia atau gagal. Pastikan modul terbaru terpasang.\n" + result.out;
             ui.post(() -> {
                 if (logView != null) logView.setText(out.isEmpty() ? "Tidak ada data." : out);
             });
@@ -805,15 +1004,214 @@ public class MainActivity extends Activity {
     }
 
     private void showModuleCheck() {
-        showOptionalModuleOutput("setup_check.sh", "", "cek pemasangan");
+        showTab(3);
+        logView.setText("Memeriksa instalasi module...");
+        io.execute(() -> {
+            // Prefer the module's own checklist; retain compatibility with older installs.
+            Root.Result check = Root.module("setup_check.sh", "");
+            String out;
+            if (check.ok() && check.out != null && check.out.trim().startsWith("{")) {
+                try {
+                    JSONObject root = new JSONObject(check.out.trim());
+                    org.json.JSONArray items = root.optJSONArray("items");
+                    StringBuilder readable = new StringBuilder("=== PEMERIKSAAN MODUL ===\n");
+                    if (items != null) {
+                        for (int i = 0; i < items.length(); i++) {
+                            JSONObject item = items.optJSONObject(i);
+                            if (item == null) continue;
+                            String status = item.optString("status", "warn").toUpperCase(java.util.Locale.ROOT);
+                            readable.append(status).append("  ")
+                                .append(item.optString("title", item.optString("id", "Pemeriksaan")))
+                                .append("\n    ").append(item.optString("detail", "")).append("\n");
+                        }
+                    } else {
+                        readable.append(check.out);
+                    }
+                    out = readable.toString();
+                } catch (Exception parseError) {
+                    out = "=== HASIL SETUP CHECK ===\n" + check.out;
+                }
+            } else {
+                Root.Result status = Root.module("get_audio_status.sh", "");
+                Root.Result viper = Root.module("viper_status.sh", "");
+                Root.Result root = Root.run("id; echo; getenforce 2>/dev/null; echo; "
+                    + "ls -ld /data/adb/modules/mora_audio_suite /data/adb/ksu/modules/mora_audio_suite "
+                    + "/data/adb/ap/modules/mora_audio_suite 2>/dev/null");
+                out = "=== ROOT / MODULE PATH (fallback) ===\n" + root.out
+                    + "\n\n=== AUDIO STATUS ===\n" + status.out
+                    + "\n\n=== VIPER STATUS ===\n" + viper.out
+                    + "\n\nChecklist bawaan tidak tersedia (kemungkinan modul versi lama).";
+            }
+            final String result = out.length() > 60000 ? out.substring(0, 60000) + "\n[output dipotong]" : out;
+            ui.post(() -> { if (logView != null) logView.setText(result); });
+        });
     }
 
     private void showModuleReport() {
-        showOptionalModuleOutput("report.sh", "", "laporan modul");
+        showTab(3);
+        logView.setText("Mengumpulkan laporan audio...");
+        io.execute(() -> {
+            // The bundled report is the authoritative, richer diagnostic source.
+            Root.Result report = Root.module("report.sh", "");
+            String out;
+            if (report.ok() && report.out != null && !report.out.trim().isEmpty()) {
+                out = report.out;
+            } else {
+                Root.Result status = Root.module("get_audio_status.sh", "");
+                Root.Result viper = Root.module("viper_status.sh", "");
+                Root.Result flinger = Root.run("dumpsys media.audio_flinger 2>/dev/null");
+                out = "=== MORA AUDIO STATUS (fallback) ===\n" + status.out
+                    + "\n\n=== VIPER DRIVER ===\n" + viper.out
+                    + "\n\n=== AUDIO FLINGER ===\n" + flinger.out
+                    + "\n\nLaporan bawaan tidak tersedia (kemungkinan modul versi lama).";
+            }
+            final String result = out.length() > 60000 ? out.substring(0, 60000) + "\n[output dipotong]" : out;
+            ui.post(() -> { if (logView != null) logView.setText(result); });
+        });
     }
 
     private void showModuleMonitor() {
-        showOptionalModuleOutput("monitor.sh", "", "monitor suhu dan baterai");
+        showTab(3);
+        logView.setText("Membaca suhu dan baterai...");
+        io.execute(() -> {
+            // monitor.sh emits a compact JSON snapshot. Keep the Android fallback for old modules.
+            Root.Result monitor = Root.module("monitor.sh", "");
+            String out;
+            if (monitor.ok() && monitor.out != null && monitor.out.trim().startsWith("{")) {
+                try {
+                    JSONObject data = new JSONObject(monitor.out.trim());
+                    out = "=== MONITOR SISTEM ===\n"
+                        + "Baterai: " + data.optInt("level") + "%\n"
+                        + "Status: " + data.optString("status", "?") + "\n"
+                        + "Suhu baterai: " + data.optInt("bat_temp") + " °C\n"
+                        + "Suhu maksimum: " + data.optInt("max_temp") + " °C\n"
+                        + "Arus: " + data.optInt("current_ma") + " mA\n"
+                        + "Tegangan: " + data.optInt("voltage_mv") + " mV";
+                } catch (Exception parseError) {
+                    out = monitor.out;
+                }
+            } else {
+                Root.Result fallback = Root.run("echo '=== BATTERY ==='; dumpsys battery 2>/dev/null; "
+                    + "echo; echo '=== THERMAL ==='; dumpsys thermalservice 2>/dev/null; "
+                    + "echo; echo '=== AUDIO SERVER ==='; pidof audioserver 2>/dev/null");
+                out = fallback.out + "\n\nMonitor bawaan tidak tersedia (kemungkinan modul versi lama).";
+            }
+            final String result = out.isEmpty() ? "Data monitor tidak tersedia." : out;
+            ui.post(() -> { if (logView != null) logView.setText(result); });
+        });
+    }
+
+    private void registerUsbReceiver() {
+        IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
+        filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+        filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(usbReceiver, filter);
+        }
+        usbReceiverRegistered = true;
+    }
+
+    private void showUsbHostReport() {
+        showTab(3);
+        UsbManager manager = (UsbManager) getSystemService(USB_SERVICE);
+        if (manager == null) {
+            logView.setText("USB Host tidak tersedia pada perangkat ini.");
+            return;
+        }
+        UsbDevice device = UsbHostInspector.findAudioStreamingDevice(manager);
+        if (device == null) {
+            logView.setText(UsbHostInspector.inspect(manager)
+                + "\n\nBelum ditemukan interface USB AudioStreaming (class 1 / subclass 2).");
+            return;
+        }
+        if (manager.hasPermission(device)) {
+            lastUsbTestReport = "=== MORA AUDIO USB TEST REPORT ===\n\n"
+                + UsbHostInspector.inspect(manager) + "\n\n"
+                + UsbHostInspector.inspectRawDescriptors(manager, device);
+            logView.setText(lastUsbTestReport);
+            return;
+        }
+        logView.setText("Meminta izin akses USB untuk "
+            + String.valueOf(device.getProductName()) + "...\nKonfirmasi dialog Android yang muncul.");
+        Intent permissionIntent = new Intent(ACTION_USB_PERMISSION).setPackage(getPackageName());
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (android.os.Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, permissionIntent, flags);
+        manager.requestPermission(device, pendingIntent);
+    }
+
+    /** Explicit hardware probe: briefly claims UAC alt 0, tests advertised alt settings, then releases. */
+    private void probeUsbAudioInterface() {
+        showTab(3);
+        UsbManager manager = (UsbManager) getSystemService(USB_SERVICE);
+        if (manager == null) {
+            logView.setText("USB Host tidak tersedia.");
+            return;
+        }
+        UsbDevice device = UsbHostInspector.findAudioStreamingDevice(manager);
+        if (device == null) {
+            logView.setText("Tidak ditemukan perangkat USB AudioStreaming.");
+            return;
+        }
+        if (!manager.hasPermission(device)) {
+            logView.setText("Izin USB belum tersedia. Jalankan Periksa perangkat USB terlebih dahulu.");
+            return;
+        }
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("Jalankan diagnostik interface USB?")
+            .setMessage("Mora Audio hanya akan mencoba claim interface AudioStreaming dengan force=false. Jika gagal, aplikasi mengumpulkan informasi driver dari sysfs dan dumpsys secara read-only. Tes ini tidak mengubah alternate setting, tidak melepas driver kernel, tidak mengirim PCM, dan tidak mengubah routing audio. Lanjutkan?")
+            .setNegativeButton("Batal", null)
+            .setPositiveButton("Uji", (dialog, which) -> {
+                logView.setText("Menjalankan probe interface USB...");
+                io.execute(() -> {
+                    String result = UsbAudioInterfaceProbe.probe(manager, device);
+                    ui.post(() -> {
+                        lastUsbTestReport = "=== MORA AUDIO USB TEST REPORT ===\n\n"
+                            + (lastUsbTestReport.isEmpty() ? "Scan descriptor belum disimpan pada sesi ini.\n\n" : lastUsbTestReport + "\n\n")
+                            + "=== USB INTERFACE OWNERSHIP PROBE ===\n" + result;
+                        if (logView != null) logView.setText(result);
+                        toast("Probe interface selesai");
+                    });
+                });
+            })
+            .show();
+    }
+
+    /** Opens Android's document picker so the user can save a plain-text USB test report. */
+    private void saveUsbTestReport() {
+        if (lastUsbTestReport == null || lastUsbTestReport.trim().isEmpty()) {
+            toast("Belum ada hasil. Jalankan Periksa perangkat USB atau Uji kepemilikan interface dahulu.");
+            return;
+        }
+        String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.ROOT)
+            .format(new java.util.Date());
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TITLE, "MoraAudio_USB_Test_" + stamp + ".txt");
+        startActivityForResult(intent, REQUEST_SAVE_TEST_REPORT);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_SAVE_TEST_REPORT || resultCode != RESULT_OK
+                || data == null || data.getData() == null) return;
+        try (OutputStream output = getContentResolver().openOutputStream(data.getData(), "w")) {
+            if (output == null) throw new java.io.IOException("Output stream tidak tersedia");
+            String header = "MORA AUDIO - USB TEST REPORT\n"
+                + "Waktu ekspor: " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z",
+                    java.util.Locale.ROOT).format(new java.util.Date()) + "\n"
+                + "Catatan: laporan diagnostik; bukan bukti streaming PCM, exclusive playback, atau bit-perfect.\n\n";
+            output.write(header.getBytes(StandardCharsets.UTF_8));
+            output.write(lastUsbTestReport.getBytes(StandardCharsets.UTF_8));
+            output.flush();
+            toast("Laporan TXT berhasil disimpan");
+        } catch (Exception error) {
+            toast("Gagal menyimpan TXT: " + error.getMessage());
+        }
     }
 
     private void exportModuleBackup() {
@@ -824,6 +1222,12 @@ public class MainActivity extends Activity {
             .setPositiveButton("Ekspor", (dialog, which) ->
                 showOptionalModuleOutput("backup_ctl.sh", "export", "ekspor cadangan"))
             .show();
+    }
+
+    /** Builds the hero's lightweight liquid-glass surface without real-time blur. */
+    private Drawable glassSurface(int fillColor, int tintColor, boolean prominent) {
+        return new GlassDrawable(dp(24), dp(1), tintColor,
+            prominent ? 0.22f : 0.12f, fillColor);
     }
 
     private void toast(String s) {
