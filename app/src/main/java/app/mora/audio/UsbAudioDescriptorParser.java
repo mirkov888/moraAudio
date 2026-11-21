@@ -156,10 +156,12 @@ final class UsbAudioDescriptorParser {
         final int entityId;
         final int interfaceNumber;
         final int controlAccess;
-        ClockSource(int entityId, int interfaceNumber, int controlAccess) {
+        final int controlBits;
+        ClockSource(int entityId, int interfaceNumber, int controlAccess, int controlBits) {
             this.entityId = entityId;
             this.interfaceNumber = interfaceNumber;
             this.controlAccess = controlAccess;
+            this.controlBits = controlBits;
         }
     }
 
@@ -198,10 +200,11 @@ final class UsbAudioDescriptorParser {
                     && interfaceSubclass == 1 && protocol == 0x20
                     && length >= 8 && u8(raw, offset + 2) == 0x0A) {
                 int entityId = u8(raw, offset + 3);
-                int access = u8(raw, offset + 5) & 0x03;
+                int controls = u8(raw, offset + 5);
+                int access = controls & 0x03;
                 // 01 = read-only, 11 = read/write. Never issue SET requests here.
                 if (entityId != 0 && (access == 1 || access == 3)) {
-                    result.add(new ClockSource(entityId, interfaceNumber, access));
+                    result.add(new ClockSource(entityId, interfaceNumber, access, controls));
                 }
             }
             offset += length;
