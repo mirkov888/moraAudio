@@ -48,6 +48,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 
 /** Mora Audio: a root app that drives the Mora Audio Suite module (same scripts the module WebUI uses). */
 public class MainActivity extends Activity {
@@ -99,6 +101,8 @@ public class MainActivity extends Activity {
     private TextView heroTitle, heroSub, heroChip, statModule, statAndroid, statRys, statBass, statDriver, statMode, statAudioServer, statOutput;
     private TextView fixBtn, logView, nowTitle, nowArtist, nowState, nowOutput, nowQuality, mediaPermissionBtn;
     private long lastQualityRead;
+    private static final int REQUEST_SAVE_TEST_REPORT = 7401;
+    private String lastUsbTestReport = "";
     private final Handler liveHandler = new Handler(Looper.getMainLooper());
     private boolean livePolling;
     private final Runnable livePoll = new Runnable() { public void run() { if (livePolling) { refreshNowPlaying(); liveHandler.postDelayed(this, 1000); } } };
@@ -120,6 +124,7 @@ public class MainActivity extends Activity {
                         + UsbHostInspector.inspect(manager) + "\n\n"
                         + UsbHostInspector.inspectRawDescriptors(manager, device != null ? device : audioDevice)
                     : "Izin USB ditolak untuk " + name + ". Sambungkan ulang DAC atau izinkan akses saat diminta.";
+                lastUsbTestReport = result;
                 if (logView != null) logView.setText(result);
                 toast(granted ? "Izin USB diberikan" : "Izin USB ditolak");
             } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)
@@ -423,6 +428,7 @@ public class MainActivity extends Activity {
         c.addView(section("USB DAC / UAC"));
         c.addView(action("Periksa perangkat USB", "Baca descriptor USB dan deteksi interface AudioStreaming", v -> showUsbHostReport()));
         c.addView(action("Uji kepemilikan interface", "Claim interface dan uji alternate setting; tanpa transfer audio", v -> probeUsbAudioInterface()));
+        c.addView(action("Simpan hasil pengujian (.txt)", "Ekspor scan USB dan hasil probe menjadi satu file teks", v -> saveUsbTestReport()));
         c.addView(section("Cadangan pengaturan"));
         c.addView(action("Ekspor cadangan", "Simpan konfigurasi ke Download/mora_backup.tar.gz", v -> exportModuleBackup()));
         c.addView(section("Log"));
@@ -1121,8 +1127,10 @@ public class MainActivity extends Activity {
             return;
         }
         if (manager.hasPermission(device)) {
-            logView.setText(UsbHostInspector.inspect(manager) + "\n\n"
-                + UsbHostInspector.inspectRawDescriptors(manager, device));
+            lastUsbTestReport = "=== MORA AUDIO USB TEST REPORT ===\n\n"
+                + UsbHostInspector.inspect(manager) + "\n\n"
+                + UsbHostInspector.inspectRawDescriptors(manager, device);
+            logView.setText(lastUsbTestReport);
             return;
         }
         logView.setText("Meminta izin akses USB untuk "
@@ -1160,12 +1168,50 @@ public class MainActivity extends Activity {
                 io.execute(() -> {
                     String result = UsbAudioInterfaceProbe.probe(manager, device);
                     ui.post(() -> {
+                        lastUsbTestReport = "=== MORA AUDIO USB TEST REPORT ===\n\n"
+                            + (lastUsbTestReport.isEmpty() ? "Scan descriptor belum disimpan pada sesi ini.\n\n" : lastUsbTestReport + "\n\n")
+                            + "=== USB INTERFACE OWNERSHIP PROBE ===\n" + result;
                         if (logView != null) logView.setText(result);
                         toast("Probe interface selesai");
                     });
                 });
             })
             .show();
+    }
+
+    /** Opens Android's document picker so the user can save a plain-text USB test report. */
+    private void saveUsbTestReport() {
+        if (lastUsbTestReport == null || lastUsbTestReport.trim().isEmpty()) {
+            toast("Belum ada hasil. Jalankan Periksa perangkat USB atau Uji kepemilikan interface dahulu.");
+            return;
+        }
+        String stamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.ROOT)
+            .format(new java.util.Date());
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TITLE, "MoraAudio_USB_Test_" + stamp + ".txt");
+        startActivityForResult(intent, REQUEST_SAVE_TEST_REPORT);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_SAVE_TEST_REPORT || resultCode != RESULT_OK
+                || data == null || data.getData() == null) return;
+        try (OutputStream output = getContentResolver().openOutputStream(data.getData(), "w")) {
+            if (output == null) throw new java.io.IOException("Output stream tidak tersedia");
+            String header = "MORA AUDIO - USB TEST REPORT\\n"
+                + "Waktu ekspor: " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z",
+                    java.util.Locale.ROOT).format(new java.util.Date()) + "\\n"
+                + "Catatan: laporan diagnostik; bukan bukti streaming PCM, exclusive playback, atau bit-perfect.\\n\\n";
+            output.write(header.getBytes(StandardCharsets.UTF_8));
+            output.write(lastUsbTestReport.getBytes(StandardCharsets.UTF_8));
+            output.flush();
+            toast("Laporan TXT berhasil disimpan");
+        } catch (Exception error) {
+            toast("Gagal menyimpan TXT: " + error.getMessage());
+        }
     }
 
     private void exportModuleBackup() {
