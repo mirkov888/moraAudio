@@ -1203,8 +1203,8 @@ public class MainActivity extends Activity {
             if (output == null) throw new java.io.IOException("Output stream tidak tersedia");
             String header = "MORA AUDIO - USB TEST REPORT\n"
                 + "Waktu ekspor: " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z",
-                    java.util.Locale.ROOT).format(new java.util.Date()) + "\\n"
-                + "Catatan: laporan diagnostik; bukan bukti streaming PCM, exclusive playback, atau bit-perfect.\\n\\n";
+                    java.util.Locale.ROOT).format(new java.util.Date()) + "\n"
+                + "Catatan: laporan diagnostik; bukan bukti streaming PCM, exclusive playback, atau bit-perfect.\n\n";
             output.write(header.getBytes(StandardCharsets.UTF_8));
             output.write(lastUsbTestReport.getBytes(StandardCharsets.UTF_8));
             output.flush();
