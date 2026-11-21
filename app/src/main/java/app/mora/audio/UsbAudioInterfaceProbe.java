@@ -21,6 +21,13 @@ final class UsbAudioInterfaceProbe {
     private UsbAudioInterfaceProbe() { }
 
     static String probe(UsbManager manager, UsbDevice device) {
+        long startedAt = android.os.SystemClock.elapsedRealtime();
+        String result = probeInternal(manager, device);
+        return result + "\\nDurasi probe: "
+            + (android.os.SystemClock.elapsedRealtime() - startedAt) + " ms";
+    }
+
+    private static String probeInternal(UsbManager manager, UsbDevice device) {
         StringBuilder report = new StringBuilder("=== USB AUDIO INTERFACE OWNERSHIP PROBE ===\n");
         if (manager == null || device == null) return report.append("USB manager/perangkat tidak tersedia.").toString();
         if (!manager.hasPermission(device)) return report.append("Izin USB belum tersedia.").toString();
@@ -29,8 +36,6 @@ final class UsbAudioInterfaceProbe {
         UsbInterface playbackBase = null;
         int playbackId = -1;
         List<UsbInterface> playbackAlternates = new ArrayList<>();
-        long startedAt = android.os.SystemClock.elapsedRealtime();
-
         report.append("Perangkat: ").append(String.valueOf(device.getProductName())).append('\n')
             .append("VID:PID: ").append(String.format(java.util.Locale.ROOT, "%04X:%04X",
                 device.getVendorId(), device.getProductId())).append('\n')
@@ -136,8 +141,6 @@ final class UsbAudioInterfaceProbe {
             if (connection != null) {
                 try { connection.close(); } catch (RuntimeException ignored) { }
             }
-            report.append("Durasi probe: ")
-                .append(android.os.SystemClock.elapsedRealtime() - startedAt).append(" ms");
         }
     }
 }
