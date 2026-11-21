@@ -75,7 +75,7 @@ final class UsbAudioInterfaceProbe {
                 if (candidate.getAlternateSetting() == 0) playbackBase = candidate;
             }
             if (playbackBase == null) {
-                return report.append("Playback alt 0 tidak ditemukan; nessun cambio di interfaccia eseguito.").toString();
+                return report.append("Playback alt 0 tidak ditemukan; tidak ada perubahan interface dilakukan.").toString();
             }
 
             report.append("USB permission: OK\\n");
