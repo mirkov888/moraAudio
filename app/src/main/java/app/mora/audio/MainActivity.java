@@ -1043,7 +1043,7 @@ public class MainActivity extends Activity {
                     + "\n\nChecklist bawaan tidak tersedia (kemungkinan modul versi lama).";
             }
             final String result = out.length() > 60000 ? out.substring(0, 60000) + "\n[output dipotong]" : out;
-            ui.post(() -> { if (logView != null) logView.setText(result); });
+            ui.post(() -> { if (logView != null) logView.setText(probeResult); });
         });
     }
 
