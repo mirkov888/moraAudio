@@ -1201,7 +1201,7 @@ public class MainActivity extends Activity {
                 || data == null || data.getData() == null) return;
         try (OutputStream output = getContentResolver().openOutputStream(data.getData(), "w")) {
             if (output == null) throw new java.io.IOException("Output stream tidak tersedia");
-            String header = "MORA AUDIO - USB TEST REPORT\\n"
+            String header = "MORA AUDIO - USB TEST REPORT\n"
                 + "Waktu ekspor: " + new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z",
                     java.util.Locale.ROOT).format(new java.util.Date()) + "\\n"
                 + "Catatan: laporan diagnostik; bukan bukti streaming PCM, exclusive playback, atau bit-perfect.\\n\\n";
